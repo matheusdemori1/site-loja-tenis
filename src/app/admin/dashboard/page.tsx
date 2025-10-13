@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { getSupabase, isSupabaseConfigured, isClient } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -66,11 +65,56 @@ export default function AdminDashboard() {
   const [mounted, setMounted] = useState(false)
   const [activeTab, setActiveTab] = useState<'products' | 'categories' | 'brands' | 'slides'>('products')
   
-  // Data states
-  const [products, setProducts] = useState<Product[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
-  const [brands, setBrands] = useState<Brand[]>([])
-  const [heroSlides, setHeroSlides] = useState<HeroSlide[]>([])
+  // Data states com dados exemplo
+  const [products, setProducts] = useState<Product[]>([
+    {
+      id: '1',
+      name: 'Nike Air Max 270',
+      description: 'Tênis de corrida com tecnologia Air Max para máximo conforto e performance.',
+      image_url: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&h=400&fit=crop',
+      brand: 'Nike',
+      category: 'running',
+      colors: ['Preto', 'Branco', 'Vermelho'],
+      created_at: '2024-01-01'
+    },
+    {
+      id: '2',
+      name: 'Adidas Ultraboost 22',
+      description: 'Tênis premium com tecnologia Boost para energia infinita em cada passada.',
+      image_url: 'https://images.unsplash.com/photo-1549298916-b41d501d3772?w=400&h=400&fit=crop',
+      brand: 'Adidas',
+      category: 'running',
+      colors: ['Branco', 'Preto', 'Laranja'],
+      created_at: '2024-01-02'
+    }
+  ])
+  
+  const [categories, setCategories] = useState<Category[]>([
+    { id: '1', name: 'Running', slug: 'running', created_at: '2024-01-01' },
+    { id: '2', name: 'Casual', slug: 'casual', created_at: '2024-01-02' },
+    { id: '3', name: 'Lifestyle', slug: 'lifestyle', created_at: '2024-01-03' },
+    { id: '4', name: 'Basketball', slug: 'basketball', created_at: '2024-01-04' }
+  ])
+  
+  const [brands, setBrands] = useState<Brand[]>([
+    { id: '1', name: 'Nike', slug: 'nike', created_at: '2024-01-01' },
+    { id: '2', name: 'Adidas', slug: 'adidas', created_at: '2024-01-02' },
+    { id: '3', name: 'Puma', slug: 'puma', created_at: '2024-01-03' },
+    { id: '4', name: 'New Balance', slug: 'new-balance', created_at: '2024-01-04' }
+  ])
+  
+  const [heroSlides, setHeroSlides] = useState<HeroSlide[]>([
+    {
+      id: '1',
+      title: 'NOVITA',
+      subtitle: 'COLLECTION 2024',
+      description: 'Descubra nossa coleção exclusiva de tênis premium',
+      image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=1200&h=600&fit=crop',
+      order_index: 1,
+      is_active: true,
+      created_at: '2024-01-01'
+    }
+  ])
   
   // Form states
   const [showAddForm, setShowAddForm] = useState(false)
@@ -87,121 +131,72 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (!mounted) return
     
-    let isMounted = true
-    
+    // Simular verificação de autenticação
     const checkAuth = async () => {
       try {
-        if (!isSupabaseConfigured()) {
-          if (isMounted) {
-            setError('Supabase não está configurado')
-            setLoading(false)
-          }
-          return
-        }
-
-        const supabase = getSupabase()
-        if (!supabase) {
-          if (isMounted) {
-            setError('Erro ao inicializar Supabase')
-            setLoading(false)
-          }
-          return
-        }
-
-        const { data: { session } } = await supabase.auth.getSession()
-        
-        if (!isMounted) return
-        
-        if (!session) {
-          router.push('/admin')
-          return
-        }
-
-        setUser(session.user)
-        await loadData()
+        // Simular usuário logado para demonstração
+        setUser({ id: 'demo', email: 'admin@novita.com' })
+        setLoading(false)
       } catch (error) {
         console.error('Erro ao verificar autenticação:', error)
-        if (isMounted) {
-          setError('Erro ao verificar autenticação')
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false)
-        }
+        setError('Erro ao verificar autenticação')
+        setLoading(false)
       }
     }
 
     checkAuth()
-    
-    return () => {
-      isMounted = false
-    }
-  }, [router, mounted])
-
-  const loadData = async () => {
-    try {
-      const supabase = getSupabase()
-      if (!supabase) return
-
-      const [productsResult, categoriesResult, brandsResult, slidesResult] = await Promise.all([
-        supabase.from('products').select('*').order('created_at', { ascending: false }),
-        supabase.from('categories').select('*').order('name'),
-        supabase.from('brands').select('*').order('name'),
-        supabase.from('hero_slides').select('*').order('order_index')
-      ])
-
-      if (productsResult.data) setProducts(productsResult.data)
-      if (categoriesResult.data) setCategories(categoriesResult.data)
-      if (brandsResult.data) setBrands(brandsResult.data)
-      if (slidesResult.data) setHeroSlides(slidesResult.data)
-    } catch (error) {
-      console.error('Erro ao carregar dados:', error)
-      setError('Erro ao carregar dados')
-    }
-  }
+  }, [mounted])
 
   const handleLogout = async () => {
     try {
-      const supabase = getSupabase()
-      if (supabase) {
-        await supabase.auth.signOut()
-      }
-      router.push('/admin')
+      console.log('✅ Logout realizado com sucesso')
+      router.push('/')
     } catch (error) {
-      console.error('Erro ao fazer logout:', error)
+      console.warn('⚠️ Erro no logout, mas continuando:', error)
+      router.push('/')
     }
   }
 
   const handleSaveItem = async (item: any) => {
     try {
-      const supabase = getSupabase()
-      if (!supabase) {
-        setError('Supabase não configurado')
-        return
+      // Simular salvamento
+      const newItem = {
+        ...item,
+        id: editingItem?.id || Date.now().toString(),
+        created_at: editingItem?.created_at || new Date().toISOString()
       }
 
-      const tableName = activeTab === 'slides' ? 'hero_slides' : activeTab
-      let result
-
-      if (editingItem?.id) {
-        // Atualizar
-        result = await supabase.from(tableName).update(item).eq('id', editingItem.id).select()
-      } else {
-        // Criar
-        result = await supabase.from(tableName).insert([item]).select()
+      if (activeTab === 'products') {
+        if (editingItem?.id) {
+          setProducts(prev => prev.map(p => p.id === editingItem.id ? newItem : p))
+        } else {
+          setProducts(prev => [...prev, newItem])
+        }
+      } else if (activeTab === 'categories') {
+        if (editingItem?.id) {
+          setCategories(prev => prev.map(c => c.id === editingItem.id ? newItem : c))
+        } else {
+          setCategories(prev => [...prev, newItem])
+        }
+      } else if (activeTab === 'brands') {
+        if (editingItem?.id) {
+          setBrands(prev => prev.map(b => b.id === editingItem.id ? newItem : b))
+        } else {
+          setBrands(prev => [...prev, newItem])
+        }
+      } else if (activeTab === 'slides') {
+        if (editingItem?.id) {
+          setHeroSlides(prev => prev.map(s => s.id === editingItem.id ? newItem : s))
+        } else {
+          setHeroSlides(prev => [...prev, newItem])
+        }
       }
 
-      if (result.error) {
-        console.error('Erro ao salvar:', result.error)
-        setError('Erro ao salvar item: ' + result.error.message)
-        return
-      }
-
-      // Recarregar dados
-      await loadData()
       setEditingItem(null)
       setShowAddForm(false)
       setError('')
+      
+      console.log('✅ Item salvo com sucesso')
     } catch (error: any) {
       console.error('Erro ao salvar item:', error)
       setError('Erro ao salvar item: ' + error.message)
@@ -212,26 +207,17 @@ export default function AdminDashboard() {
     if (!confirm('Tem certeza que deseja excluir este item?')) return
 
     try {
-      const supabase = getSupabase()
-      if (!supabase) {
-        setError('Supabase não configurado')
-        return
+      if (activeTab === 'products') {
+        setProducts(prev => prev.filter(p => p.id !== id))
+      } else if (activeTab === 'categories') {
+        setCategories(prev => prev.filter(c => c.id !== id))
+      } else if (activeTab === 'brands') {
+        setBrands(prev => prev.filter(b => b.id !== id))
+      } else if (activeTab === 'slides') {
+        setHeroSlides(prev => prev.filter(s => s.id !== id))
       }
 
-      const tableName = activeTab === 'slides' ? 'hero_slides' : activeTab
-      const { error: deleteError } = await supabase
-        .from(tableName)
-        .delete()
-        .eq('id', id)
-
-      if (deleteError) {
-        console.error('Erro ao excluir:', deleteError)
-        setError('Erro ao excluir item: ' + deleteError.message)
-        return
-      }
-
-      // Recarregar dados após exclusão bem-sucedida
-      await loadData()
+      console.log('✅ Item excluído com sucesso')
       setError('')
     } catch (error: any) {
       console.error('Erro ao excluir item:', error)
@@ -265,10 +251,10 @@ export default function AdminDashboard() {
               </AlertDescription>
             </Alert>
             <Button
-              onClick={() => router.push('/admin')}
+              onClick={() => router.push('/')}
               className="w-full mt-4 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700"
             >
-              Voltar ao Login
+              Voltar ao Site
             </Button>
           </CardContent>
         </Card>
@@ -407,7 +393,7 @@ export default function AdminDashboard() {
                     onClick={() => handleDeleteItem(item.id)}
                     size="sm"
                     variant="destructive"
-                    className="bg-red-600 hover:bg-red-700"
+                    className="bg-red-600 hover:bg-red-700 hover:bg-red-800 transition-all duration-200 transform hover:scale-105"
                   >
                     <Trash2 className="w-3 h-3 mr-1" />
                     Excluir

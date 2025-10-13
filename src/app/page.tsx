@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Search, User, ChevronLeft, ChevronRight, Settings } from 'lucide-react';
-import { getSupabase, isClient } from '@/lib/supabase';
 
 interface Product {
   id: string;
@@ -113,6 +112,34 @@ export default function HomePage() {
         'Vermelho': 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&h=400&fit=crop',
         'Laranja': 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=400&h=400&fit=crop'
       }
+    },
+    {
+      id: '5',
+      name: 'Jordan Air 1 Retro',
+      image_url: 'https://images.unsplash.com/photo-1551107696-a4b0c5a0d9a2?w=400&h=400&fit=crop',
+      brand: 'Nike',
+      category: 'basketball',
+      description: 'Clássico tênis de basquete com design icônico e performance superior.',
+      colors: ['Vermelho', 'Preto', 'Branco'],
+      color_images: {
+        'Vermelho': 'https://images.unsplash.com/photo-1551107696-a4b0c5a0d9a2?w=400&h=400&fit=crop',
+        'Preto': 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&h=400&fit=crop',
+        'Branco': 'https://images.unsplash.com/photo-1549298916-b41d501d3772?w=400&h=400&fit=crop'
+      }
+    },
+    {
+      id: '6',
+      name: 'Converse Chuck Taylor',
+      image_url: 'https://images.unsplash.com/photo-1552346154-21d32810aba3?w=400&h=400&fit=crop',
+      brand: 'Converse',
+      category: 'casual',
+      description: 'Tênis casual clássico com estilo atemporal e versatilidade única.',
+      colors: ['Branco', 'Preto', 'Vermelho'],
+      color_images: {
+        'Branco': 'https://images.unsplash.com/photo-1552346154-21d32810aba3?w=400&h=400&fit=crop',
+        'Preto': 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&h=400&fit=crop',
+        'Vermelho': 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=400&h=400&fit=crop'
+      }
     }
   ];
 
@@ -127,7 +154,8 @@ export default function HomePage() {
     { id: '1', name: 'Nike', slug: 'nike' },
     { id: '2', name: 'Adidas', slug: 'adidas' },
     { id: '3', name: 'Puma', slug: 'puma' },
-    { id: '4', name: 'New Balance', slug: 'new-balance' }
+    { id: '4', name: 'New Balance', slug: 'new-balance' },
+    { id: '5', name: 'Converse', slug: 'converse' }
   ];
 
   const defaultHeroSlides: HeroSlide[] = [
@@ -151,52 +179,27 @@ export default function HomePage() {
     }
   ];
 
-  // Função memoizada para buscar dados
-  const fetchData = useCallback(async () => {
-    if (!mounted || !isClient()) {
-      return;
-    }
+  // Função para carregar dados (sempre usa dados exemplo)
+  const loadData = useCallback(async () => {
+    if (!mounted) return;
 
     try {
       setLoading(true);
       
-      // Usar dados exemplo por padrão
+      // Usar dados exemplo diretamente
       setProducts(sampleProducts);
       setCategories(sampleCategories);
       setBrands(sampleBrands);
       setHeroSlides(defaultHeroSlides);
       
-      // Tentar buscar dados do Supabase se disponível
-      const supabase = getSupabase();
-      
-      if (supabase) {
-        try {
-          const [productsResult, categoriesResult, brandsResult, heroSlidesResult] = await Promise.all([
-            supabase.from('products').select('*').order('created_at', { ascending: false }),
-            supabase.from('categories').select('*').order('name'),
-            supabase.from('brands').select('*').order('name'),
-            supabase.from('hero_slides').select('*').order('order_index')
-          ]);
-
-          // Atualizar com dados do Supabase se disponíveis
-          if (productsResult?.data && productsResult.data.length > 0) {
-            setProducts(productsResult.data);
-          }
-          if (categoriesResult?.data && categoriesResult.data.length > 0) {
-            setCategories(categoriesResult.data);
-          }
-          if (brandsResult?.data && brandsResult.data.length > 0) {
-            setBrands(brandsResult.data);
-          }
-          if (heroSlidesResult?.data && heroSlidesResult.data.length > 0) {
-            setHeroSlides(heroSlidesResult.data);
-          }
-        } catch (supabaseError) {
-          console.log('Usando dados exemplo (Supabase não disponível)');
-        }
-      }
+      console.log('✅ Dados carregados com sucesso');
     } catch (error) {
-      console.error('Erro ao carregar dados:', error);
+      console.error('❌ Erro ao carregar dados:', error);
+      // Garantir que sempre temos dados exemplo
+      setProducts(sampleProducts);
+      setCategories(sampleCategories);
+      setBrands(sampleBrands);
+      setHeroSlides(defaultHeroSlides);
     } finally {
       setLoading(false);
     }
@@ -205,9 +208,9 @@ export default function HomePage() {
   // Effect para carregar dados apenas após hidratação
   useEffect(() => {
     if (mounted) {
-      fetchData();
+      loadData();
     }
-  }, [mounted, fetchData]);
+  }, [mounted, loadData]);
 
   // Effect para carousel com cleanup adequado
   useEffect(() => {
