@@ -1,13 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase, Brand } from '@/lib/supabase'
+import { getSupabase, isSupabaseConfigured, Brand } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { Plus, Edit, Trash2, Tag } from 'lucide-react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Plus, Edit, Trash2, Tag, AlertCircle } from 'lucide-react'
 
 interface BrandManagerProps {
   onStatsUpdate: () => void
@@ -16,8 +16,9 @@ interface BrandManagerProps {
 export default function BrandManager({ onStatsUpdate }: BrandManagerProps) {
   const [brands, setBrands] = useState<Brand[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [showForm, setShowForm] = useState(false)
   const [editingBrand, setEditingBrand] = useState<Brand | null>(null)
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [formData, setFormData] = useState({
     name: ''
   })
@@ -28,29 +29,32 @@ export default function BrandManager({ onStatsUpdate }: BrandManagerProps) {
 
   const loadBrands = async () => {
     try {
-      const { data, error } = await supabase
+      if (!isSupabaseConfigured()) {
+        setError('Supabase não está configurado')
+        return
+      }
+
+      const supabase = getSupabase()
+      if (!supabase) {
+        setError('Erro ao inicializar Supabase')
+        return
+      }
+
+      const { data, error: fetchError } = await supabase
         .from('brands')
         .select('*')
         .order('name')
 
-      if (error) throw error
+      if (fetchError) throw fetchError
+
       setBrands(data || [])
-    } catch (error) {
+      setError('')
+    } catch (error: any) {
       console.error('Erro ao carregar marcas:', error)
+      setError(error.message || 'Erro ao carregar marcas')
     } finally {
       setLoading(false)
     }
-  }
-
-  const resetForm = () => {
-    setFormData({ name: '' })
-    setEditingBrand(null)
-  }
-
-  const handleEdit = (brand: Brand) => {
-    setEditingBrand(brand)
-    setFormData({ name: brand.name })
-    setIsDialogOpen(true)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -58,11 +62,22 @@ export default function BrandManager({ onStatsUpdate }: BrandManagerProps) {
     setLoading(true)
 
     try {
+      if (!isSupabaseConfigured()) {
+        throw new Error('Supabase não está configurado')
+      }
+
+      const supabase = getSupabase()
+      if (!supabase) {
+        throw new Error('Erro ao inicializar Supabase')
+      }
+
       if (editingBrand) {
-        // Atualizar marca
+        // Atualizar marca existente
         const { error } = await supabase
           .from('brands')
-          .update({ name: formData.name })
+          .update({
+            name: formData.name
+          })
           .eq('id', editingBrand.id)
 
         if (error) throw error
@@ -70,26 +85,51 @@ export default function BrandManager({ onStatsUpdate }: BrandManagerProps) {
         // Criar nova marca
         const { error } = await supabase
           .from('brands')
-          .insert({ name: formData.name })
+          .insert([{
+            name: formData.name
+          }])
 
         if (error) throw error
       }
 
-      setIsDialogOpen(false)
-      resetForm()
-      loadBrands()
+      // Resetar formulário
+      setFormData({ name: '' })
+      setShowForm(false)
+      setEditingBrand(null)
+      
+      // Recarregar dados
+      await loadBrands()
       onStatsUpdate()
-    } catch (error) {
+      
+    } catch (error: any) {
       console.error('Erro ao salvar marca:', error)
+      setError(error.message || 'Erro ao salvar marca')
     } finally {
       setLoading(false)
     }
   }
 
+  const handleEdit = (brand: Brand) => {
+    setEditingBrand(brand)
+    setFormData({
+      name: brand.name
+    })
+    setShowForm(true)
+  }
+
   const handleDelete = async (id: string) => {
-    if (!confirm('Tem certeza que deseja deletar esta marca?')) return
+    if (!confirm('Tem certeza que deseja excluir esta marca?')) return
 
     try {
+      if (!isSupabaseConfigured()) {
+        throw new Error('Supabase não está configurado')
+      }
+
+      const supabase = getSupabase()
+      if (!supabase) {
+        throw new Error('Erro ao inicializar Supabase')
+      }
+
       const { error } = await supabase
         .from('brands')
         .delete()
@@ -97,112 +137,153 @@ export default function BrandManager({ onStatsUpdate }: BrandManagerProps) {
 
       if (error) throw error
 
-      loadBrands()
+      await loadBrands()
       onStatsUpdate()
-    } catch (error) {
-      console.error('Erro ao deletar marca:', error)
+    } catch (error: any) {
+      console.error('Erro ao excluir marca:', error)
+      setError(error.message || 'Erro ao excluir marca')
     }
   }
 
-  if (loading) {
-    return <div className="text-white">Carregando marcas...</div>
+  const resetForm = () => {
+    setFormData({ name: '' })
+    setShowForm(false)
+    setEditingBrand(null)
+    setError('')
+  }
+
+  if (loading && brands.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-500 mx-auto mb-4"></div>
+        <p className="text-gray-300">Carregando marcas...</p>
+      </div>
+    )
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-white">Gerenciar Marcas</h2>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button 
-              onClick={resetForm}
-              className="bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Nova Marca
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-md bg-black/90 border-red-500/30 backdrop-blur-md">
-            <DialogHeader>
-              <DialogTitle className="text-white">
-                {editingBrand ? 'Editar Marca' : 'Nova Marca'}
-              </DialogTitle>
-            </DialogHeader>
-            
+      {error && (
+        <Alert className="border-red-500/50 bg-red-500/10">
+          <AlertCircle className="h-4 w-4 text-red-400" />
+          <AlertDescription className="text-red-300">
+            {error}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Botão Adicionar */}
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-semibold text-white">Gerenciar Marcas</h2>
+        <Button
+          onClick={() => setShowForm(true)}
+          className="bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700"
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          Nova Marca
+        </Button>
+      </div>
+
+      {/* Formulário */}
+      {showForm && (
+        <Card className="bg-black/30 backdrop-blur-md border-red-500/20">
+          <CardHeader>
+            <CardTitle className="text-white">
+              {editingBrand ? 'Editar Marca' : 'Nova Marca'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name" className="text-white">Nome da Marca</Label>
+              <div>
+                <Label htmlFor="name" className="text-gray-300">
+                  Nome da Marca
+                </Label>
                 <Input
                   id="name"
                   value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  className="bg-black/30 border-red-500/30 text-white"
-                  placeholder="Ex: Nike, Adidas, Puma"
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="Ex: Nike, Adidas, Puma..."
                   required
+                  className="bg-black/20 border-red-500/30 text-white placeholder-gray-400 focus:border-red-500"
                 />
               </div>
 
-              <div className="flex justify-end space-x-2">
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  onClick={() => setIsDialogOpen(false)}
+              <div className="flex space-x-2">
+                <Button
+                  type="submit"
+                  disabled={loading}
+                  className="bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700"
+                >
+                  {loading ? 'Salvando...' : editingBrand ? 'Atualizar' : 'Criar'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={resetForm}
                   className="border-red-500/30 text-gray-300 hover:bg-red-500/10"
                 >
                   Cancelar
                 </Button>
-                <Button 
-                  type="submit" 
-                  className="bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700"
-                >
-                  {editingBrand ? 'Atualizar' : 'Criar'} Marca
-                </Button>
               </div>
             </form>
-          </DialogContent>
-        </Dialog>
-      </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Lista de Marcas */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {brands.map(brand => (
-          <Card key={brand.id} className="bg-black/30 border-red-500/20 backdrop-blur-sm">
-            <CardHeader>
+        {brands.map((brand) => (
+          <Card key={brand.id} className="bg-black/30 backdrop-blur-md border-red-500/20">
+            <CardContent className="p-4">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-white text-lg flex items-center">
-                  <Tag className="w-5 h-5 mr-2 text-red-400" />
-                  {brand.name}
-                </CardTitle>
+                <div className="flex items-center space-x-3">
+                  <Tag className="w-5 h-5 text-orange-400" />
+                  <div>
+                    <h3 className="font-medium text-white">{brand.name}</h3>
+                    <p className="text-sm text-gray-400">
+                      Criada em {new Date(brand.created_at).toLocaleDateString('pt-BR')}
+                    </p>
+                  </div>
+                </div>
                 <div className="flex space-x-2">
                   <Button
-                    onClick={() => handleEdit(brand)}
-                    variant="outline"
                     size="sm"
+                    variant="outline"
+                    onClick={() => handleEdit(brand)}
                     className="border-red-500/30 text-gray-300 hover:bg-red-500/10"
                   >
                     <Edit className="w-4 h-4" />
                   </Button>
                   <Button
-                    onClick={() => handleDelete(brand.id)}
-                    variant="destructive"
                     size="sm"
+                    variant="outline"
+                    onClick={() => handleDelete(brand.id)}
+                    className="border-red-500/30 text-red-400 hover:bg-red-500/10"
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
               </div>
-            </CardHeader>
+            </CardContent>
           </Card>
         ))}
       </div>
 
-      {brands.length === 0 && (
-        <div className="text-center py-12">
-          <Tag className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-gray-400 mb-2">Nenhuma marca cadastrada</h3>
-          <p className="text-gray-500">Clique em "Nova Marca" para começar.</p>
-        </div>
+      {brands.length === 0 && !loading && (
+        <Card className="bg-black/30 backdrop-blur-md border-red-500/20">
+          <CardContent className="text-center py-8">
+            <Tag className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-white mb-2">Nenhuma marca encontrada</h3>
+            <p className="text-gray-400 mb-4">Comece criando sua primeira marca</p>
+            <Button
+              onClick={() => setShowForm(true)}
+              className="bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Criar Primeira Marca
+            </Button>
+          </CardContent>
+        </Card>
       )}
     </div>
   )

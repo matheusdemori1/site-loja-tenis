@@ -1,11 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase, Product, Brand, Category, ProductColor } from '@/lib/supabase'
+import { getSupabase, isSupabaseConfigured, Product, Brand, Category, ProductColor } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Badge } from '@/components/ui/badge'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { 
   Package, 
   Tag, 
@@ -18,13 +18,18 @@ import {
   TrendingUp,
   Users,
   DollarSign,
-  Image
+  Image,
+  Database,
+  AlertCircle
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import ProductManager from '@/components/admin/ProductManager'
 import BrandManager from '@/components/admin/BrandManager'
 import CategoryManager from '@/components/admin/CategoryManager'
 import HeroSlideManager from '@/components/admin/HeroSlideManager'
+
+// Forçar renderização dinâmica
+export const dynamic = 'force-dynamic'
 
 export default function AdminDashboard() {
   const [user, setUser] = useState<any>(null)
@@ -36,20 +41,52 @@ export default function AdminDashboard() {
   })
   const [loading, setLoading] = useState(true)
   const [authChecked, setAuthChecked] = useState(false)
+  const [supabaseError, setSupabaseError] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const router = useRouter()
 
+  // Aguardar hidratação do cliente
   useEffect(() => {
-    let mounted = true;
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (!mounted) return
+    
+    let isMounted = true
     
     const initializeAuth = async () => {
       try {
+        // Aguardar um pouco para garantir que as variáveis de ambiente estejam disponíveis
+        await new Promise(resolve => setTimeout(resolve, 100))
+        
+        // Verificar se o Supabase está configurado
+        if (!isSupabaseConfigured()) {
+          if (isMounted) {
+            setSupabaseError(true)
+            setAuthChecked(true)
+            setLoading(false)
+          }
+          return
+        }
+
+        const supabase = getSupabase()
+        if (!supabase) {
+          if (isMounted) {
+            setSupabaseError(true)
+            setAuthChecked(true)
+            setLoading(false)
+          }
+          return
+        }
+
         const { data: { session } } = await supabase.auth.getSession()
         
-        if (!mounted) return;
+        if (!isMounted) return
         
         if (!session) {
           router.push('/admin')
-          return;
+          return
         }
         
         setUser(session.user)
@@ -59,7 +96,7 @@ export default function AdminDashboard() {
         await loadStats()
       } catch (error) {
         console.error('Erro na autenticação:', error)
-        if (mounted) {
+        if (isMounted) {
           router.push('/admin')
         }
       }
@@ -68,27 +105,38 @@ export default function AdminDashboard() {
     initializeAuth()
     
     return () => {
-      mounted = false;
+      isMounted = false
     }
-  }, [router])
+  }, [router, mounted])
 
   const loadStats = async () => {
     try {
+      if (!isSupabaseConfigured()) {
+        setSupabaseError(true)
+        return
+      }
+
+      const supabase = getSupabase()
+      if (!supabase) {
+        setSupabaseError(true)
+        return
+      }
+
       // Usar Promise.all com timeout para evitar travamento
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Timeout')), 5000)
-      );
+      )
 
       const statsPromise = Promise.all([
         supabase.from('products').select('*', { count: 'exact', head: true }),
         supabase.from('brands').select('*', { count: 'exact', head: true }),
         supabase.from('categories').select('*', { count: 'exact', head: true }),
         supabase.from('hero_slides').select('*', { count: 'exact', head: true })
-      ]);
+      ])
 
-      const results = await Promise.race([statsPromise, timeoutPromise]) as any[];
+      const results = await Promise.race([statsPromise, timeoutPromise]) as any[]
       
-      const [productsResult, brandsResult, categoriesResult, slidesResult] = results;
+      const [productsResult, brandsResult, categoriesResult, slidesResult] = results
 
       setStats({
         totalProducts: productsResult?.count || 0,
@@ -112,13 +160,28 @@ export default function AdminDashboard() {
 
   const handleLogout = async () => {
     try {
-      await supabase.auth.signOut()
+      const supabase = getSupabase()
+      if (supabase) {
+        await supabase.auth.signOut()
+      }
       router.push('/admin')
     } catch (error) {
       console.error('Erro ao fazer logout:', error)
       // Forçar redirecionamento mesmo com erro
       router.push('/admin')
     }
+  }
+
+  // Não renderizar nada até a hidratação
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-black via-red-900 to-orange-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-red-500 mx-auto mb-4"></div>
+          <p className="text-white text-xl">Carregando...</p>
+        </div>
+      </div>
+    )
   }
 
   // Mostrar loading apenas se ainda não verificou auth
@@ -133,9 +196,38 @@ export default function AdminDashboard() {
     )
   }
 
+  // Se Supabase não está configurado
+  if (supabaseError) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-black via-red-900 to-orange-900 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md bg-black/30 backdrop-blur-md border-red-500/20">
+          <CardHeader className="text-center">
+            <CardTitle className="text-2xl font-bold bg-gradient-to-r from-red-500 to-orange-500 bg-clip-text text-transparent mb-2">
+              Configuração Necessária
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-center space-y-4">
+            <Alert className="border-orange-500/50 bg-orange-500/10">
+              <Database className="h-4 w-4 text-orange-400" />
+              <AlertDescription className="text-orange-300">
+                Configure sua integração Supabase nas configurações do projeto para usar o painel administrativo.
+              </AlertDescription>
+            </Alert>
+            <Button 
+              onClick={() => router.push('/admin')}
+              className="w-full bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700"
+            >
+              Voltar ao Login
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   // Se não há usuário após verificação, não renderizar nada (redirecionamento em andamento)
   if (!user) {
-    return null;
+    return null
   }
 
   return (

@@ -1,13 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase, Category } from '@/lib/supabase'
+import { getSupabase, isSupabaseConfigured, Category } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { Plus, Edit, Trash2, Layers } from 'lucide-react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Plus, Edit, Trash2, Layers, AlertCircle } from 'lucide-react'
 
 interface CategoryManagerProps {
   onStatsUpdate: () => void
@@ -16,8 +16,9 @@ interface CategoryManagerProps {
 export default function CategoryManager({ onStatsUpdate }: CategoryManagerProps) {
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [showForm, setShowForm] = useState(false)
   const [editingCategory, setEditingCategory] = useState<Category | null>(null)
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [formData, setFormData] = useState({
     name: ''
   })
@@ -28,29 +29,32 @@ export default function CategoryManager({ onStatsUpdate }: CategoryManagerProps)
 
   const loadCategories = async () => {
     try {
-      const { data, error } = await supabase
+      if (!isSupabaseConfigured()) {
+        setError('Supabase não está configurado')
+        return
+      }
+
+      const supabase = getSupabase()
+      if (!supabase) {
+        setError('Erro ao inicializar Supabase')
+        return
+      }
+
+      const { data, error: fetchError } = await supabase
         .from('categories')
         .select('*')
         .order('name')
 
-      if (error) throw error
+      if (fetchError) throw fetchError
+
       setCategories(data || [])
-    } catch (error) {
+      setError('')
+    } catch (error: any) {
       console.error('Erro ao carregar categorias:', error)
+      setError(error.message || 'Erro ao carregar categorias')
     } finally {
       setLoading(false)
     }
-  }
-
-  const resetForm = () => {
-    setFormData({ name: '' })
-    setEditingCategory(null)
-  }
-
-  const handleEdit = (category: Category) => {
-    setEditingCategory(category)
-    setFormData({ name: category.name })
-    setIsDialogOpen(true)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -58,11 +62,22 @@ export default function CategoryManager({ onStatsUpdate }: CategoryManagerProps)
     setLoading(true)
 
     try {
+      if (!isSupabaseConfigured()) {
+        throw new Error('Supabase não está configurado')
+      }
+
+      const supabase = getSupabase()
+      if (!supabase) {
+        throw new Error('Erro ao inicializar Supabase')
+      }
+
       if (editingCategory) {
-        // Atualizar categoria
+        // Atualizar categoria existente
         const { error } = await supabase
           .from('categories')
-          .update({ name: formData.name })
+          .update({
+            name: formData.name
+          })
           .eq('id', editingCategory.id)
 
         if (error) throw error
@@ -70,26 +85,51 @@ export default function CategoryManager({ onStatsUpdate }: CategoryManagerProps)
         // Criar nova categoria
         const { error } = await supabase
           .from('categories')
-          .insert({ name: formData.name })
+          .insert([{
+            name: formData.name
+          }])
 
         if (error) throw error
       }
 
-      setIsDialogOpen(false)
-      resetForm()
-      loadCategories()
+      // Resetar formulário
+      setFormData({ name: '' })
+      setShowForm(false)
+      setEditingCategory(null)
+      
+      // Recarregar dados
+      await loadCategories()
       onStatsUpdate()
-    } catch (error) {
+      
+    } catch (error: any) {
       console.error('Erro ao salvar categoria:', error)
+      setError(error.message || 'Erro ao salvar categoria')
     } finally {
       setLoading(false)
     }
   }
 
+  const handleEdit = (category: Category) => {
+    setEditingCategory(category)
+    setFormData({
+      name: category.name
+    })
+    setShowForm(true)
+  }
+
   const handleDelete = async (id: string) => {
-    if (!confirm('Tem certeza que deseja deletar esta categoria?')) return
+    if (!confirm('Tem certeza que deseja excluir esta categoria?')) return
 
     try {
+      if (!isSupabaseConfigured()) {
+        throw new Error('Supabase não está configurado')
+      }
+
+      const supabase = getSupabase()
+      if (!supabase) {
+        throw new Error('Erro ao inicializar Supabase')
+      }
+
       const { error } = await supabase
         .from('categories')
         .delete()
@@ -97,112 +137,153 @@ export default function CategoryManager({ onStatsUpdate }: CategoryManagerProps)
 
       if (error) throw error
 
-      loadCategories()
+      await loadCategories()
       onStatsUpdate()
-    } catch (error) {
-      console.error('Erro ao deletar categoria:', error)
+    } catch (error: any) {
+      console.error('Erro ao excluir categoria:', error)
+      setError(error.message || 'Erro ao excluir categoria')
     }
   }
 
-  if (loading) {
-    return <div className="text-white">Carregando categorias...</div>
+  const resetForm = () => {
+    setFormData({ name: '' })
+    setShowForm(false)
+    setEditingCategory(null)
+    setError('')
+  }
+
+  if (loading && categories.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-500 mx-auto mb-4"></div>
+        <p className="text-gray-300">Carregando categorias...</p>
+      </div>
+    )
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-white">Gerenciar Categorias</h2>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button 
-              onClick={resetForm}
-              className="bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Nova Categoria
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-md bg-black/90 border-red-500/30 backdrop-blur-md">
-            <DialogHeader>
-              <DialogTitle className="text-white">
-                {editingCategory ? 'Editar Categoria' : 'Nova Categoria'}
-              </DialogTitle>
-            </DialogHeader>
-            
+      {error && (
+        <Alert className="border-red-500/50 bg-red-500/10">
+          <AlertCircle className="h-4 w-4 text-red-400" />
+          <AlertDescription className="text-red-300">
+            {error}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Botão Adicionar */}
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-semibold text-white">Gerenciar Categorias</h2>
+        <Button
+          onClick={() => setShowForm(true)}
+          className="bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700"
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          Nova Categoria
+        </Button>
+      </div>
+
+      {/* Formulário */}
+      {showForm && (
+        <Card className="bg-black/30 backdrop-blur-md border-red-500/20">
+          <CardHeader>
+            <CardTitle className="text-white">
+              {editingCategory ? 'Editar Categoria' : 'Nova Categoria'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name" className="text-white">Nome da Categoria</Label>
+              <div>
+                <Label htmlFor="name" className="text-gray-300">
+                  Nome da Categoria
+                </Label>
                 <Input
                   id="name"
                   value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  className="bg-black/30 border-red-500/30 text-white"
-                  placeholder="Ex: Tênis, Camisetas, Acessórios"
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="Ex: Tênis, Camisetas, Acessórios..."
                   required
+                  className="bg-black/20 border-red-500/30 text-white placeholder-gray-400 focus:border-red-500"
                 />
               </div>
 
-              <div className="flex justify-end space-x-2">
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  onClick={() => setIsDialogOpen(false)}
+              <div className="flex space-x-2">
+                <Button
+                  type="submit"
+                  disabled={loading}
+                  className="bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700"
+                >
+                  {loading ? 'Salvando...' : editingCategory ? 'Atualizar' : 'Criar'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={resetForm}
                   className="border-red-500/30 text-gray-300 hover:bg-red-500/10"
                 >
                   Cancelar
                 </Button>
-                <Button 
-                  type="submit" 
-                  className="bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700"
-                >
-                  {editingCategory ? 'Atualizar' : 'Criar'} Categoria
-                </Button>
               </div>
             </form>
-          </DialogContent>
-        </Dialog>
-      </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Lista de Categorias */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {categories.map(category => (
-          <Card key={category.id} className="bg-black/30 border-red-500/20 backdrop-blur-sm">
-            <CardHeader>
+        {categories.map((category) => (
+          <Card key={category.id} className="bg-black/30 backdrop-blur-md border-red-500/20">
+            <CardContent className="p-4">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-white text-lg flex items-center">
-                  <Layers className="w-5 h-5 mr-2 text-orange-400" />
-                  {category.name}
-                </CardTitle>
+                <div className="flex items-center space-x-3">
+                  <Layers className="w-5 h-5 text-red-400" />
+                  <div>
+                    <h3 className="font-medium text-white">{category.name}</h3>
+                    <p className="text-sm text-gray-400">
+                      Criada em {new Date(category.created_at).toLocaleDateString('pt-BR')}
+                    </p>
+                  </div>
+                </div>
                 <div className="flex space-x-2">
                   <Button
-                    onClick={() => handleEdit(category)}
-                    variant="outline"
                     size="sm"
+                    variant="outline"
+                    onClick={() => handleEdit(category)}
                     className="border-red-500/30 text-gray-300 hover:bg-red-500/10"
                   >
                     <Edit className="w-4 h-4" />
                   </Button>
                   <Button
-                    onClick={() => handleDelete(category.id)}
-                    variant="destructive"
                     size="sm"
+                    variant="outline"
+                    onClick={() => handleDelete(category.id)}
+                    className="border-red-500/30 text-red-400 hover:bg-red-500/10"
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
               </div>
-            </CardHeader>
+            </CardContent>
           </Card>
         ))}
       </div>
 
-      {categories.length === 0 && (
-        <div className="text-center py-12">
-          <Layers className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-gray-400 mb-2">Nenhuma categoria cadastrada</h3>
-          <p className="text-gray-500">Clique em "Nova Categoria" para começar.</p>
-        </div>
+      {categories.length === 0 && !loading && (
+        <Card className="bg-black/30 backdrop-blur-md border-red-500/20">
+          <CardContent className="text-center py-8">
+            <Layers className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-white mb-2">Nenhuma categoria encontrada</h3>
+            <p className="text-gray-400 mb-4">Comece criando sua primeira categoria</p>
+            <Button
+              onClick={() => setShowForm(true)}
+              className="bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Criar Primeira Categoria
+            </Button>
+          </CardContent>
+        </Card>
       )}
     </div>
   )

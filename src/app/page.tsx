@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Search, User, ChevronLeft, ChevronRight } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { getSupabase, isClient } from '@/lib/supabase';
 
 interface Product {
   id: string;
@@ -46,6 +46,12 @@ export default function HomePage() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedColors, setSelectedColors] = useState<{ [key: string]: string }>({});
+  const [mounted, setMounted] = useState(false);
+
+  // Aguardar hidratação do cliente
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Produtos exemplo para demonstração
   const sampleProducts: Product[] = [
@@ -144,13 +150,23 @@ export default function HomePage() {
 
   // Função memoizada para buscar dados
   const fetchData = useCallback(async () => {
+    if (!mounted || !isClient()) {
+      return;
+    }
+
     try {
       setLoading(true);
       
       // Tentar buscar dados do Supabase com timeout
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Timeout')), 5000)
+        setTimeout(() => reject(new Error('Timeout')), 3000)
       );
+
+      const supabase = getSupabase();
+      
+      if (!supabase) {
+        throw new Error('Supabase não disponível');
+      }
 
       const dataPromise = Promise.all([
         supabase.from('products').select('*').order('created_at', { ascending: false }),
@@ -178,12 +194,14 @@ export default function HomePage() {
     } finally {
       setLoading(false);
     }
-  }, []); // Dependências vazias para evitar loops
+  }, [mounted]);
 
-  // Effect para carregar dados apenas uma vez
+  // Effect para carregar dados apenas após hidratação
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (mounted) {
+      fetchData();
+    }
+  }, [mounted, fetchData]);
 
   // Effect para carousel com cleanup adequado
   useEffect(() => {
@@ -208,7 +226,7 @@ export default function HomePage() {
 
   const handleWhatsApp = (product: Product, selectedColor?: string) => {
     const color = selectedColor || selectedColors[product.id] || 'A definir';
-    const message = `Olá! Tenho interesse no produto:\n\n📦 *${product.name}*\n🎨 Cor: ${color}\n🏷️ Marca: ${product.brand}\n\nGostaria de mais informações!`;
+    const message = `Olá! Tenho interesse no produto:\\n\\n📦 *${product.name}*\\n🎨 Cor: ${color}\\n🏷️ Marca: ${product.brand}\\n\\nGostaria de mais informações!`;
 
     const whatsappNumber = "5518981100463";
     const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
@@ -237,6 +255,18 @@ export default function HomePage() {
   const prevSlide = () => {
     setCurrentSlide((prev) => (prev - 1 + heroSlides.length) % heroSlides.length);
   };
+
+  // Não renderizar nada até a hidratação
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-black via-red-900 to-orange-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-red-500 mx-auto mb-4"></div>
+          <p className="text-white text-lg">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
