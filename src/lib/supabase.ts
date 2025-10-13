@@ -18,30 +18,12 @@ const getSupabaseConfig = () => {
 // Cliente Supabase com inicialização lazy
 let supabaseClient: any = null
 
-export const supabase = (() => {
-  // Mock para SSR
-  const mockClient = {
-    from: () => ({
-      select: () => Promise.resolve({ data: [], error: null }),
-      insert: () => Promise.resolve({ data: [], error: null }),
-      update: () => Promise.resolve({ data: [], error: null }),
-      delete: () => Promise.resolve({ data: [], error: null }),
-      order: () => Promise.resolve({ data: [], error: null })
-    }),
-    auth: {
-      signIn: () => Promise.resolve({ data: null, error: null }),
-      signOut: () => Promise.resolve({ data: null, error: null }),
-      getUser: () => Promise.resolve({ data: { user: null }, error: null }),
-      getSession: () => Promise.resolve({ data: { session: null }, error: null }),
-      signInWithPassword: () => Promise.resolve({ data: null, error: null })
-    }
-  }
-
-  // Se não estamos no cliente, retorna mock
+// Função para obter o cliente Supabase
+export const getSupabase = () => {
   if (!isClient()) {
-    return mockClient
+    return null
   }
-
+  
   // Se já temos cliente, retorna ele
   if (supabaseClient) {
     return supabaseClient
@@ -52,39 +34,26 @@ export const supabase = (() => {
     const config = getSupabaseConfig()
     
     if (!config.url || !config.key) {
-      console.warn('Supabase não configurado - usando mock')
-      return mockClient
+      console.warn('Supabase não configurado - variáveis de ambiente não encontradas')
+      return null
     }
 
-    supabaseClient = createClient(config.url, config.key)
+    supabaseClient = createClient(config.url, config.key, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+      },
+    })
+    
     return supabaseClient
   } catch (error) {
     console.error('Erro ao criar cliente Supabase:', error)
-    return mockClient
+    return null
   }
-})()
-
-// Função para obter o cliente Supabase (compatibilidade com código existente)
-export const getSupabase = () => {
-  if (!isClient()) {
-    return supabase
-  }
-  
-  // Se não temos cliente ainda, tenta criar
-  if (!supabaseClient) {
-    try {
-      const config = getSupabaseConfig()
-      
-      if (config.url && config.key) {
-        supabaseClient = createClient(config.url, config.key)
-      }
-    } catch (error) {
-      console.error('Erro ao inicializar Supabase:', error)
-    }
-  }
-  
-  return supabaseClient || supabase
 }
+
+// Cliente Supabase principal
+export const supabase = getSupabase()
 
 // Função helper para verificar se o Supabase está configurado
 export const isSupabaseConfigured = () => {

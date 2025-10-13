@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Search, User, ChevronLeft, ChevronRight, Settings, Plus, Edit, Trash2, Save, X, Upload, Eye, EyeOff } from 'lucide-react';
+import { Search, User, ChevronLeft, ChevronRight, Settings } from 'lucide-react';
 import { getSupabase, isClient } from '@/lib/supabase';
 
 interface Product {
@@ -49,12 +49,6 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [selectedColors, setSelectedColors] = useState<{ [key: string]: string }>({});
   const [mounted, setMounted] = useState(false);
-  
-  // Estados do Admin
-  const [showAdmin, setShowAdmin] = useState(false);
-  const [adminTab, setAdminTab] = useState<'products' | 'categories' | 'brands' | 'slides'>('products');
-  const [editingItem, setEditingItem] = useState<any>(null);
-  const [showAddForm, setShowAddForm] = useState(false);
 
   // Aguardar hidratação do cliente
   useEffect(() => {
@@ -165,40 +159,43 @@ export default function HomePage() {
     try {
       setLoading(true);
       
-      // Tentar buscar dados do Supabase com timeout
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Timeout')), 3000)
-      );
-
-      const supabase = getSupabase();
-      
-      if (!supabase) {
-        throw new Error('Supabase não disponível');
-      }
-
-      const dataPromise = Promise.all([
-        supabase.from('products').select('*').order('created_at', { ascending: false }),
-        supabase.from('categories').select('*').order('name'),
-        supabase.from('brands').select('*').order('name'),
-        supabase.from('hero_slides').select('*').order('order_index')
-      ]);
-
-      const results = await Promise.race([dataPromise, timeoutPromise]) as any[];
-      
-      const [productsResult, categoriesResult, brandsResult, heroSlidesResult] = results;
-
-      // Se não houver dados no Supabase, usar dados exemplo
-      setProducts(productsResult?.data && productsResult.data.length > 0 ? productsResult.data : sampleProducts);
-      setCategories(categoriesResult?.data && categoriesResult.data.length > 0 ? categoriesResult.data : sampleCategories);
-      setBrands(brandsResult?.data && brandsResult.data.length > 0 ? brandsResult.data : sampleBrands);
-      setHeroSlides(heroSlidesResult?.data && heroSlidesResult.data.length > 0 ? heroSlidesResult.data : defaultHeroSlides);
-    } catch (error) {
-      console.error('Erro ao carregar dados:', error);
-      // Em caso de erro, usar dados exemplo
+      // Usar dados exemplo por padrão
       setProducts(sampleProducts);
       setCategories(sampleCategories);
       setBrands(sampleBrands);
       setHeroSlides(defaultHeroSlides);
+      
+      // Tentar buscar dados do Supabase se disponível
+      const supabase = getSupabase();
+      
+      if (supabase) {
+        try {
+          const [productsResult, categoriesResult, brandsResult, heroSlidesResult] = await Promise.all([
+            supabase.from('products').select('*').order('created_at', { ascending: false }),
+            supabase.from('categories').select('*').order('name'),
+            supabase.from('brands').select('*').order('name'),
+            supabase.from('hero_slides').select('*').order('order_index')
+          ]);
+
+          // Atualizar com dados do Supabase se disponíveis
+          if (productsResult?.data && productsResult.data.length > 0) {
+            setProducts(productsResult.data);
+          }
+          if (categoriesResult?.data && categoriesResult.data.length > 0) {
+            setCategories(categoriesResult.data);
+          }
+          if (brandsResult?.data && brandsResult.data.length > 0) {
+            setBrands(brandsResult.data);
+          }
+          if (heroSlidesResult?.data && heroSlidesResult.data.length > 0) {
+            setHeroSlides(heroSlidesResult.data);
+          }
+        } catch (supabaseError) {
+          console.log('Usando dados exemplo (Supabase não disponível)');
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao carregar dados:', error);
     } finally {
       setLoading(false);
     }
@@ -264,104 +261,8 @@ export default function HomePage() {
     setCurrentSlide((prev) => (prev - 1 + heroSlides.length) % heroSlides.length);
   };
 
-  // Funções Admin
-  const handleSaveItem = async (item: any, type: string) => {
-    try {
-      const supabase = getSupabase();
-      if (!supabase) {
-        console.warn('Supabase não configurado - salvando localmente');
-        // Salvar localmente para demonstração
-        if (type === 'products') {
-          if (editingItem?.id) {
-            setProducts(prev => prev.map(p => p.id === editingItem.id ? { ...item, id: editingItem.id } : p));
-          } else {
-            setProducts(prev => [...prev, { ...item, id: Date.now().toString() }]);
-          }
-        } else if (type === 'categories') {
-          if (editingItem?.id) {
-            setCategories(prev => prev.map(c => c.id === editingItem.id ? { ...item, id: editingItem.id } : c));
-          } else {
-            setCategories(prev => [...prev, { ...item, id: Date.now().toString() }]);
-          }
-        } else if (type === 'brands') {
-          if (editingItem?.id) {
-            setBrands(prev => prev.map(b => b.id === editingItem.id ? { ...item, id: editingItem.id } : b));
-          } else {
-            setBrands(prev => [...prev, { ...item, id: Date.now().toString() }]);
-          }
-        } else if (type === 'slides') {
-          if (editingItem?.id) {
-            setHeroSlides(prev => prev.map(s => s.id === editingItem.id ? { ...item, id: editingItem.id } : s));
-          } else {
-            setHeroSlides(prev => [...prev, { ...item, id: Date.now().toString() }]);
-          }
-        }
-        setEditingItem(null);
-        setShowAddForm(false);
-        return;
-      }
-
-      let result;
-      if (editingItem?.id) {
-        // Atualizar
-        result = await supabase.from(type).update(item).eq('id', editingItem.id);
-      } else {
-        // Criar
-        result = await supabase.from(type).insert([item]);
-      }
-
-      if (result.error) {
-        console.error('Erro ao salvar:', result.error);
-        alert('Erro ao salvar item');
-        return;
-      }
-
-      // Recarregar dados
-      await fetchData();
-      setEditingItem(null);
-      setShowAddForm(false);
-      alert('Item salvo com sucesso!');
-    } catch (error) {
-      console.error('Erro ao salvar item:', error);
-      alert('Erro ao salvar item');
-    }
-  };
-
-  const handleDeleteItem = async (id: string, type: string) => {
-    if (!confirm('Tem certeza que deseja excluir este item?')) return;
-
-    try {
-      const supabase = getSupabase();
-      if (!supabase) {
-        console.warn('Supabase não configurado - removendo localmente');
-        // Remover localmente para demonstração
-        if (type === 'products') {
-          setProducts(prev => prev.filter(p => p.id !== id));
-        } else if (type === 'categories') {
-          setCategories(prev => prev.filter(c => c.id !== id));
-        } else if (type === 'brands') {
-          setBrands(prev => prev.filter(b => b.id !== id));
-        } else if (type === 'slides') {
-          setHeroSlides(prev => prev.filter(s => s.id !== id));
-        }
-        return;
-      }
-
-      const result = await supabase.from(type).delete().eq('id', id);
-
-      if (result.error) {
-        console.error('Erro ao excluir:', result.error);
-        alert('Erro ao excluir item');
-        return;
-      }
-
-      // Recarregar dados
-      await fetchData();
-      alert('Item excluído com sucesso!');
-    } catch (error) {
-      console.error('Erro ao excluir item:', error);
-      alert('Erro ao excluir item');
-    }
+  const handleAdminClick = () => {
+    window.location.href = '/admin';
   };
 
   // Não renderizar nada até a hidratação
@@ -417,7 +318,7 @@ export default function HomePage() {
             {/* User Icon & Admin Button */}
             <div className="flex items-center gap-4">
               <button
-                onClick={() => setShowAdmin(!showAdmin)}
+                onClick={handleAdminClick}
                 className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-4 py-2 rounded-full font-semibold transition-all duration-300 transform hover:scale-105"
               >
                 <Settings className="w-4 h-4" />
@@ -428,235 +329,6 @@ export default function HomePage() {
           </div>
         </div>
       </header>
-
-      {/* Admin Panel */}
-      {showAdmin && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-500/30 rounded-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden">
-            <div className="flex items-center justify-between p-6 border-b border-red-500/20">
-              <h2 className="text-2xl font-bold bg-gradient-to-r from-red-500 to-orange-500 bg-clip-text text-transparent">
-                Painel Administrativo
-              </h2>
-              <button
-                onClick={() => setShowAdmin(false)}
-                className="text-gray-400 hover:text-white transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            <div className="flex">
-              {/* Sidebar */}
-              <div className="w-64 bg-black/40 border-r border-red-500/20 p-4">
-                <nav className="space-y-2">
-                  {[
-                    { id: 'products', label: 'Produtos', icon: '📦' },
-                    { id: 'categories', label: 'Categorias', icon: '📂' },
-                    { id: 'brands', label: 'Marcas', icon: '🏷️' },
-                    { id: 'slides', label: 'Slides Hero', icon: '🖼️' }
-                  ].map((tab) => (
-                    <button
-                      key={tab.id}
-                      onClick={() => setAdminTab(tab.id as any)}
-                      className={`w-full text-left px-4 py-3 rounded-lg transition-all duration-300 flex items-center gap-3 ${
-                        adminTab === tab.id
-                          ? 'bg-gradient-to-r from-red-600 to-orange-600 text-white'
-                          : 'text-gray-300 hover:bg-white/10'
-                      }`}
-                    >
-                      <span>{tab.icon}</span>
-                      {tab.label}
-                    </button>
-                  ))}
-                </nav>
-              </div>
-
-              {/* Content */}
-              <div className="flex-1 p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-semibold text-white">
-                    {adminTab === 'products' && 'Gerenciar Produtos'}
-                    {adminTab === 'categories' && 'Gerenciar Categorias'}
-                    {adminTab === 'brands' && 'Gerenciar Marcas'}
-                    {adminTab === 'slides' && 'Gerenciar Slides Hero'}
-                  </h3>
-                  <button
-                    onClick={() => setShowAddForm(true)}
-                    className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white px-4 py-2 rounded-lg font-semibold transition-all duration-300 flex items-center gap-2"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Adicionar
-                  </button>
-                </div>
-
-                {/* Products Tab */}
-                {adminTab === 'products' && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {products.map((product) => (
-                      <div key={product.id} className="bg-black/30 rounded-lg p-4 border border-red-500/20">
-                        <img
-                          src={product.image_url}
-                          alt={product.name}
-                          className="w-full h-32 object-cover rounded-lg mb-3"
-                        />
-                        <h4 className="font-semibold text-white mb-2">{product.name}</h4>
-                        <p className="text-gray-300 text-sm mb-2">{product.brand}</p>
-                        <p className="text-gray-400 text-xs mb-3 line-clamp-2">{product.description}</p>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => setEditingItem(product)}
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm flex items-center gap-1"
-                          >
-                            <Edit className="w-3 h-3" />
-                            Editar
-                          </button>
-                          <button
-                            onClick={() => handleDeleteItem(product.id, 'products')}
-                            className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm flex items-center gap-1"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                            Excluir
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Categories Tab */}
-                {adminTab === 'categories' && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {categories.map((category) => (
-                      <div key={category.id} className="bg-black/30 rounded-lg p-4 border border-red-500/20">
-                        <h4 className="font-semibold text-white mb-2">{category.name}</h4>
-                        <p className="text-gray-300 text-sm mb-3">Slug: {category.slug}</p>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => setEditingItem(category)}
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm flex items-center gap-1"
-                          >
-                            <Edit className="w-3 h-3" />
-                            Editar
-                          </button>
-                          <button
-                            onClick={() => handleDeleteItem(category.id, 'categories')}
-                            className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm flex items-center gap-1"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                            Excluir
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Brands Tab */}
-                {adminTab === 'brands' && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {brands.map((brand) => (
-                      <div key={brand.id} className="bg-black/30 rounded-lg p-4 border border-red-500/20">
-                        <h4 className="font-semibold text-white mb-2">{brand.name}</h4>
-                        <p className="text-gray-300 text-sm mb-3">Slug: {brand.slug}</p>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => setEditingItem(brand)}
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm flex items-center gap-1"
-                          >
-                            <Edit className="w-3 h-3" />
-                            Editar
-                          </button>
-                          <button
-                            onClick={() => handleDeleteItem(brand.id, 'brands')}
-                            className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm flex items-center gap-1"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                            Excluir
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Slides Tab */}
-                {adminTab === 'slides' && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {heroSlides.map((slide, index) => (
-                      <div key={slide.id || index} className="bg-black/30 rounded-lg p-4 border border-red-500/20">
-                        <img
-                          src={slide.image}
-                          alt={slide.title}
-                          className="w-full h-32 object-cover rounded-lg mb-3"
-                        />
-                        <h4 className="font-semibold text-white mb-2">{slide.title}</h4>
-                        <p className="text-gray-300 text-sm mb-2">{slide.subtitle}</p>
-                        <p className="text-gray-400 text-xs mb-3 line-clamp-2">{slide.description}</p>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => setEditingItem(slide)}
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm flex items-center gap-1"
-                          >
-                            <Edit className="w-3 h-3" />
-                            Editar
-                          </button>
-                          <button
-                            onClick={() => handleDeleteItem(slide.id || index.toString(), 'hero_slides')}
-                            className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm flex items-center gap-1"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                            Excluir
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add/Edit Form Modal */}
-      {(showAddForm || editingItem) && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-60 flex items-center justify-center p-4">
-          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-500/30 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-bold text-white">
-                  {editingItem ? 'Editar' : 'Adicionar'} {
-                    adminTab === 'products' ? 'Produto' :
-                    adminTab === 'categories' ? 'Categoria' :
-                    adminTab === 'brands' ? 'Marca' : 'Slide'
-                  }
-                </h3>
-                <button
-                  onClick={() => {
-                    setEditingItem(null);
-                    setShowAddForm(false);
-                  }}
-                  className="text-gray-400 hover:text-white transition-colors"
-                >
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-
-              <AdminForm
-                type={adminTab}
-                item={editingItem}
-                onSave={(item) => handleSaveItem(item, adminTab === 'slides' ? 'hero_slides' : adminTab)}
-                onCancel={() => {
-                  setEditingItem(null);
-                  setShowAddForm(false);
-                }}
-                categories={categories}
-                brands={brands}
-              />
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Hero Section with Carousel */}
       <section className="relative h-[70vh] overflow-hidden">
@@ -938,219 +610,5 @@ export default function HomePage() {
         </div>
       </footer>
     </div>
-  );
-}
-
-// Componente de formulário admin
-function AdminForm({ 
-  type, 
-  item, 
-  onSave, 
-  onCancel, 
-  categories, 
-  brands 
-}: { 
-  type: string;
-  item: any;
-  onSave: (item: any) => void;
-  onCancel: () => void;
-  categories: Category[];
-  brands: Brand[];
-}) {
-  const [formData, setFormData] = useState(item || {});
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // Validações básicas
-    if (type === 'products') {
-      if (!formData.name || !formData.brand || !formData.category || !formData.image_url) {
-        alert('Preencha todos os campos obrigatórios');
-        return;
-      }
-      // Processar cores
-      if (formData.colors && typeof formData.colors === 'string') {
-        formData.colors = formData.colors.split(',').map((c: string) => c.trim());
-      }
-    } else if (type === 'categories' || type === 'brands') {
-      if (!formData.name) {
-        alert('Nome é obrigatório');
-        return;
-      }
-      if (!formData.slug) {
-        formData.slug = formData.name.toLowerCase().replace(/\s+/g, '-');
-      }
-    } else if (type === 'slides') {
-      if (!formData.title || !formData.subtitle || !formData.image) {
-        alert('Preencha todos os campos obrigatórios');
-        return;
-      }
-    }
-
-    onSave(formData);
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      {type === 'products' && (
-        <>
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Nome *</label>
-            <input
-              type="text"
-              value={formData.name || ''}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full bg-black/30 border border-red-500/30 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Descrição</label>
-            <textarea
-              value={formData.description || ''}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full bg-black/30 border border-red-500/30 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500"
-              rows={3}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">URL da Imagem *</label>
-            <input
-              type="url"
-              value={formData.image_url || ''}
-              onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-              className="w-full bg-black/30 border border-red-500/30 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500"
-              required
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Marca *</label>
-              <select
-                value={formData.brand || ''}
-                onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-                className="w-full bg-black/30 border border-red-500/30 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500"
-                required
-              >
-                <option value="">Selecione uma marca</option>
-                {brands.map((brand) => (
-                  <option key={brand.id} value={brand.name}>{brand.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Categoria *</label>
-              <select
-                value={formData.category || ''}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                className="w-full bg-black/30 border border-red-500/30 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500"
-                required
-              >
-                <option value="">Selecione uma categoria</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.slug}>{category.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Cores (separadas por vírgula)</label>
-            <input
-              type="text"
-              value={Array.isArray(formData.colors) ? formData.colors.join(', ') : formData.colors || ''}
-              onChange={(e) => setFormData({ ...formData, colors: e.target.value })}
-              className="w-full bg-black/30 border border-red-500/30 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500"
-              placeholder="Ex: Preto, Branco, Vermelho"
-            />
-          </div>
-        </>
-      )}
-
-      {(type === 'categories' || type === 'brands') && (
-        <>
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Nome *</label>
-            <input
-              type="text"
-              value={formData.name || ''}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full bg-black/30 border border-red-500/30 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Slug</label>
-            <input
-              type="text"
-              value={formData.slug || ''}
-              onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
-              className="w-full bg-black/30 border border-red-500/30 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500"
-              placeholder="Será gerado automaticamente se vazio"
-            />
-          </div>
-        </>
-      )}
-
-      {type === 'slides' && (
-        <>
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Título *</label>
-            <input
-              type="text"
-              value={formData.title || ''}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              className="w-full bg-black/30 border border-red-500/30 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Subtítulo *</label>
-            <input
-              type="text"
-              value={formData.subtitle || ''}
-              onChange={(e) => setFormData({ ...formData, subtitle: e.target.value })}
-              className="w-full bg-black/30 border border-red-500/30 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Descrição</label>
-            <textarea
-              value={formData.description || ''}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full bg-black/30 border border-red-500/30 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500"
-              rows={3}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">URL da Imagem *</label>
-            <input
-              type="url"
-              value={formData.image || ''}
-              onChange={(e) => setFormData({ ...formData, image: e.target.value })}
-              className="w-full bg-black/30 border border-red-500/30 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500"
-              required
-            />
-          </div>
-        </>
-      )}
-
-      <div className="flex gap-4 pt-4">
-        <button
-          type="submit"
-          className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white px-6 py-2 rounded-lg font-semibold transition-all duration-300 flex items-center gap-2"
-        >
-          <Save className="w-4 h-4" />
-          Salvar
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-lg font-semibold transition-all duration-300"
-        >
-          Cancelar
-        </button>
-      </div>
-    </form>
   );
 }
