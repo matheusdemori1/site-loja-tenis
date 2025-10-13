@@ -185,10 +185,10 @@ export default function AdminDashboard() {
 
       if (editingItem?.id) {
         // Atualizar
-        result = await supabase.from(tableName).update(item).eq('id', editingItem.id)
+        result = await supabase.from(tableName).update(item).eq('id', editingItem.id).select()
       } else {
         // Criar
-        result = await supabase.from(tableName).insert([item])
+        result = await supabase.from(tableName).insert([item]).select()
       }
 
       if (result.error) {
@@ -219,15 +219,18 @@ export default function AdminDashboard() {
       }
 
       const tableName = activeTab === 'slides' ? 'hero_slides' : activeTab
-      const result = await supabase.from(tableName).delete().eq('id', id)
+      const { error: deleteError } = await supabase
+        .from(tableName)
+        .delete()
+        .eq('id', id)
 
-      if (result.error) {
-        console.error('Erro ao excluir:', result.error)
-        setError('Erro ao excluir item: ' + result.error.message)
+      if (deleteError) {
+        console.error('Erro ao excluir:', deleteError)
+        setError('Erro ao excluir item: ' + deleteError.message)
         return
       }
 
-      // Recarregar dados
+      // Recarregar dados após exclusão bem-sucedida
       await loadData()
       setError('')
     } catch (error: any) {
@@ -291,7 +294,7 @@ export default function AdminDashboard() {
                 NOVITA Admin
               </h1>
               <span className="text-gray-400">|</span>
-              <span className="text-gray-300">Bem-vindo, {user?.email}</span>
+              <span className="text-gray-300">Painel Administrativo</span>
             </div>
             <div className="flex items-center gap-4">
               <Button
@@ -404,6 +407,7 @@ export default function AdminDashboard() {
                     onClick={() => handleDeleteItem(item.id)}
                     size="sm"
                     variant="destructive"
+                    className="bg-red-600 hover:bg-red-700"
                   >
                     <Trash2 className="w-3 h-3 mr-1" />
                     Excluir

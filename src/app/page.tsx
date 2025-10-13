@@ -49,6 +49,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [selectedColors, setSelectedColors] = useState<{ [key: string]: string }>({});
   const [mounted, setMounted] = useState(false);
+  const [showAdminButton, setShowAdminButton] = useState(false);
 
   // Aguardar hidratação do cliente
   useEffect(() => {
@@ -265,6 +266,11 @@ export default function HomePage() {
     window.location.href = '/admin';
   };
 
+  // Função para mostrar botão admin com cliques múltiplos
+  const handleLogoClick = () => {
+    setShowAdminButton(prev => !prev);
+  };
+
   // Não renderizar nada até a hidratação
   if (!mounted) {
     return (
@@ -296,7 +302,10 @@ export default function HomePage() {
           <div className="flex items-center justify-between h-20">
             {/* Logo */}
             <div className="flex-shrink-0">
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-red-500 to-orange-500 bg-clip-text text-transparent">
+              <h1 
+                onClick={handleLogoClick}
+                className="text-3xl font-bold bg-gradient-to-r from-red-500 to-orange-500 bg-clip-text text-transparent cursor-pointer select-none"
+              >
                 NOVITA
               </h1>
             </div>
@@ -315,15 +324,17 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* User Icon & Admin Button */}
+            {/* User Icon & Admin Button (Hidden) */}
             <div className="flex items-center gap-4">
-              <button
-                onClick={handleAdminClick}
-                className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-4 py-2 rounded-full font-semibold transition-all duration-300 transform hover:scale-105"
-              >
-                <Settings className="w-4 h-4" />
-                Admin
-              </button>
+              {showAdminButton && (
+                <button
+                  onClick={handleAdminClick}
+                  className="flex items-center gap-2 bg-gradient-to-r from-purple-600/80 to-blue-600/80 hover:from-purple-700 hover:to-blue-700 text-white px-3 py-2 rounded-full font-medium text-sm transition-all duration-300 transform hover:scale-105 opacity-70 hover:opacity-100"
+                >
+                  <Settings className="w-3 h-3" />
+                  Admin
+                </button>
+              )}
               <User className="w-8 h-8 text-gray-300 hover:text-white cursor-pointer transition-colors p-1 hover:bg-white/10 rounded-full" />
             </div>
           </div>
