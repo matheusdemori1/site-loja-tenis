@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Search, User, ChevronLeft, ChevronRight, Settings } from 'lucide-react';
+import { Search, User, ChevronLeft, ChevronRight } from 'lucide-react';
+import { getSupabase, isClient, executeSupabaseOperation } from '@/lib/supabase';
 
 interface Product {
   id: string;
@@ -32,8 +33,6 @@ interface HeroSlide {
   subtitle: string;
   description: string;
   image: string;
-  order_index?: number;
-  is_active?: boolean;
 }
 
 export default function HomePage() {
@@ -48,7 +47,6 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [selectedColors, setSelectedColors] = useState<{ [key: string]: string }>({});
   const [mounted, setMounted] = useState(false);
-  const [showAdminButton, setShowAdminButton] = useState(false);
 
   // Aguardar hidratação do cliente
   useEffect(() => {
@@ -112,34 +110,6 @@ export default function HomePage() {
         'Vermelho': 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&h=400&fit=crop',
         'Laranja': 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=400&h=400&fit=crop'
       }
-    },
-    {
-      id: '5',
-      name: 'Jordan Air 1 Retro',
-      image_url: 'https://images.unsplash.com/photo-1551107696-a4b0c5a0d9a2?w=400&h=400&fit=crop',
-      brand: 'Nike',
-      category: 'basketball',
-      description: 'Clássico tênis de basquete com design icônico e performance superior.',
-      colors: ['Vermelho', 'Preto', 'Branco'],
-      color_images: {
-        'Vermelho': 'https://images.unsplash.com/photo-1551107696-a4b0c5a0d9a2?w=400&h=400&fit=crop',
-        'Preto': 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&h=400&fit=crop',
-        'Branco': 'https://images.unsplash.com/photo-1549298916-b41d501d3772?w=400&h=400&fit=crop'
-      }
-    },
-    {
-      id: '6',
-      name: 'Converse Chuck Taylor',
-      image_url: 'https://images.unsplash.com/photo-1552346154-21d32810aba3?w=400&h=400&fit=crop',
-      brand: 'Converse',
-      category: 'casual',
-      description: 'Tênis casual clássico com estilo atemporal e versatilidade única.',
-      colors: ['Branco', 'Preto', 'Vermelho'],
-      color_images: {
-        'Branco': 'https://images.unsplash.com/photo-1552346154-21d32810aba3?w=400&h=400&fit=crop',
-        'Preto': 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&h=400&fit=crop',
-        'Vermelho': 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=400&h=400&fit=crop'
-      }
     }
   ];
 
@@ -154,8 +124,7 @@ export default function HomePage() {
     { id: '1', name: 'Nike', slug: 'nike' },
     { id: '2', name: 'Adidas', slug: 'adidas' },
     { id: '3', name: 'Puma', slug: 'puma' },
-    { id: '4', name: 'New Balance', slug: 'new-balance' },
-    { id: '5', name: 'Converse', slug: 'converse' }
+    { id: '4', name: 'New Balance', slug: 'new-balance' }
   ];
 
   const defaultHeroSlides: HeroSlide[] = [
@@ -179,23 +148,43 @@ export default function HomePage() {
     }
   ];
 
-  // Função para carregar dados (sempre usa dados exemplo)
-  const loadData = useCallback(async () => {
-    if (!mounted) return;
+  // Função memoizada para buscar dados
+  const fetchData = useCallback(async () => {
+    if (!mounted || !isClient()) {
+      return;
+    }
 
     try {
       setLoading(true);
       
-      // Usar dados exemplo diretamente
-      setProducts(sampleProducts);
-      setCategories(sampleCategories);
-      setBrands(sampleBrands);
-      setHeroSlides(defaultHeroSlides);
-      
-      console.log('✅ Dados carregados com sucesso');
+      // Usar executeSupabaseOperation para operações com fallback automático
+      const [productsResult, categoriesResult, brandsResult, heroSlidesResult] = await Promise.all([
+        executeSupabaseOperation(
+          () => getSupabase().from('products').select('*').order('created_at', { ascending: false }),
+          sampleProducts
+        ),
+        executeSupabaseOperation(
+          () => getSupabase().from('categories').select('*').order('name'),
+          sampleCategories
+        ),
+        executeSupabaseOperation(
+          () => getSupabase().from('brands').select('*').order('name'),
+          sampleBrands
+        ),
+        executeSupabaseOperation(
+          () => getSupabase().from('hero_slides').select('*').order('order_index'),
+          defaultHeroSlides
+        )
+      ]);
+
+      // Usar dados do Supabase ou fallback
+      setProducts(productsResult.data && productsResult.data.length > 0 ? productsResult.data : sampleProducts);
+      setCategories(categoriesResult.data && categoriesResult.data.length > 0 ? categoriesResult.data : sampleCategories);
+      setBrands(brandsResult.data && brandsResult.data.length > 0 ? brandsResult.data : sampleBrands);
+      setHeroSlides(heroSlidesResult.data && heroSlidesResult.data.length > 0 ? heroSlidesResult.data : defaultHeroSlides);
     } catch (error) {
-      console.error('❌ Erro ao carregar dados:', error);
-      // Garantir que sempre temos dados exemplo
+      console.error('Erro ao carregar dados:', error);
+      // Em caso de erro, usar dados exemplo
       setProducts(sampleProducts);
       setCategories(sampleCategories);
       setBrands(sampleBrands);
@@ -208,9 +197,9 @@ export default function HomePage() {
   // Effect para carregar dados apenas após hidratação
   useEffect(() => {
     if (mounted) {
-      loadData();
+      fetchData();
     }
-  }, [mounted, loadData]);
+  }, [mounted, fetchData]);
 
   // Effect para carousel com cleanup adequado
   useEffect(() => {
@@ -265,15 +254,6 @@ export default function HomePage() {
     setCurrentSlide((prev) => (prev - 1 + heroSlides.length) % heroSlides.length);
   };
 
-  const handleAdminClick = () => {
-    window.location.href = '/admin';
-  };
-
-  // Função para mostrar botão admin com cliques múltiplos
-  const handleLogoClick = () => {
-    setShowAdminButton(prev => !prev);
-  };
-
   // Não renderizar nada até a hidratação
   if (!mounted) {
     return (
@@ -305,10 +285,7 @@ export default function HomePage() {
           <div className="flex items-center justify-between h-20">
             {/* Logo */}
             <div className="flex-shrink-0">
-              <h1 
-                onClick={handleLogoClick}
-                className="text-3xl font-bold bg-gradient-to-r from-red-500 to-orange-500 bg-clip-text text-transparent cursor-pointer select-none"
-              >
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-red-500 to-orange-500 bg-clip-text text-transparent">
                 NOVITA
               </h1>
             </div>
@@ -327,17 +304,8 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* User Icon & Admin Button (Hidden) */}
-            <div className="flex items-center gap-4">
-              {showAdminButton && (
-                <button
-                  onClick={handleAdminClick}
-                  className="flex items-center gap-2 bg-gradient-to-r from-purple-600/80 to-blue-600/80 hover:from-purple-700 hover:to-blue-700 text-white px-3 py-2 rounded-full font-medium text-sm transition-all duration-300 transform hover:scale-105 opacity-70 hover:opacity-100"
-                >
-                  <Settings className="w-3 h-3" />
-                  Admin
-                </button>
-              )}
+            {/* User Icon */}
+            <div className="flex items-center">
               <User className="w-8 h-8 text-gray-300 hover:text-white cursor-pointer transition-colors p-1 hover:bg-white/10 rounded-full" />
             </div>
           </div>

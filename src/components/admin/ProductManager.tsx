@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { getSupabase, isSupabaseConfigured, Product, Brand, Category, ProductColor } from '@/lib/supabase'
+import { getSupabase, isSupabaseConfigured, executeSupabaseOperation, Product, Brand, Category } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -27,24 +27,24 @@ interface ProductManagerProps {
 
 export default function ProductManager({ onStatsUpdate }: ProductManagerProps) {
   const [products, setProducts] = useState<Product[]>([])
-  const [brands, setBrands] = useState<Brand[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    price: '',
-    stock: '',
-    brand_id: '',
-    category_id: ''
+    image_url: '',
+    brand: '',
+    category: ''
   })
-  const [colors, setColors] = useState<{ color_name: string; image_url: string }[]>([])
+  const [colors, setColors] = useState<string[]>([])
+  const [colorImages, setColorImages] = useState<{ [key: string]: string }>({})
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  const supabase = getSupabase()
+  // Categorias e marcas padrão
+  const defaultCategories = ['running', 'casual', 'lifestyle', 'basketball']
+  const defaultBrands = ['Nike', 'Adidas', 'Puma', 'New Balance']
 
   useEffect(() => {
     loadData()
@@ -52,37 +52,17 @@ export default function ProductManager({ onStatsUpdate }: ProductManagerProps) {
 
   const loadData = async () => {
     try {
-      if (!isSupabaseConfigured() || !supabase) {
-        setError('Supabase não está configurado')
-        setLoading(false)
-        return
-      }
+      const result = await executeSupabaseOperation(
+        () => getSupabase().from('products').select('*').order('created_at', { ascending: false }),
+        []
+      )
 
-      const [productsResult, brandsResult, categoriesResult] = await Promise.all([
-        supabase
-          .from('products')
-          .select(`
-            *,
-            brand:brands(name),
-            category:categories(name),
-            colors:product_colors(*)
-          `)
-          .order('created_at', { ascending: false }),
-        supabase.from('brands').select('*').order('name'),
-        supabase.from('categories').select('*').order('name')
-      ])
-
-      if (productsResult.error) throw productsResult.error
-      if (brandsResult.error) throw brandsResult.error
-      if (categoriesResult.error) throw categoriesResult.error
-
-      setProducts(productsResult.data || [])
-      setBrands(brandsResult.data || [])
-      setCategories(categoriesResult.data || [])
+      setProducts(result.data || [])
       setError('')
     } catch (error: any) {
-      console.error('Erro ao carregar dados:', error)
-      setError('Erro ao carregar dados: ' + error.message)
+      console.error('Erro ao carregar produtos:', error)
+      setError('Erro ao carregar produtos: ' + error.message)
+      setProducts([])
     } finally {
       setLoading(false)
     }
@@ -94,61 +74,28 @@ export default function ProductManager({ onStatsUpdate }: ProductManagerProps) {
     setError('')
 
     try {
-      if (!isSupabaseConfigured() || !supabase) {
-        throw new Error('Supabase não está configurado')
-      }
-
       const productData = {
         name: formData.name,
         description: formData.description,
-        price: parseFloat(formData.price),
-        stock: parseInt(formData.stock),
-        brand_id: formData.brand_id,
-        category_id: formData.category_id
+        image_url: formData.image_url,
+        brand: formData.brand,
+        category: formData.category,
+        colors: colors,
+        color_images: colorImages
       }
-
-      let productId: string
 
       if (editingProduct) {
         // Atualizar produto existente
-        const { error: updateError } = await supabase
-          .from('products')
-          .update(productData)
-          .eq('id', editingProduct.id)
-
-        if (updateError) throw updateError
-        productId = editingProduct.id
-
-        // Remover cores antigas
-        await supabase
-          .from('product_colors')
-          .delete()
-          .eq('product_id', productId)
+        await executeSupabaseOperation(
+          () => getSupabase().from('products').update(productData).eq('id', editingProduct.id),
+          null
+        )
       } else {
         // Criar novo produto
-        const { data: newProduct, error: insertError } = await supabase
-          .from('products')
-          .insert([productData])
-          .select()
-          .single()
-
-        if (insertError) throw insertError
-        productId = newProduct.id
-      }
-
-      // Adicionar cores
-      if (colors.length > 0) {
-        const colorData = colors.map(color => ({
-          product_id: productId,
-          color_name: color.color_name,
-          image_url: color.image_url
-        }))
-
-        const { error: colorError } = await supabase
-          .from('product_colors')
-          .insert(colorData)
-
-        if (colorError) throw colorError
+        await executeSupabaseOperation(
+          () => getSupabase().from('products').insert([productData]),
+          null
+        )
       }
 
       await loadData()
@@ -167,23 +114,10 @@ export default function ProductManager({ onStatsUpdate }: ProductManagerProps) {
     if (!confirm('Tem certeza que deseja excluir este produto?')) return
 
     try {
-      if (!isSupabaseConfigured() || !supabase) {
-        throw new Error('Supabase não está configurado')
-      }
-
-      // Remover cores primeiro
-      await supabase
-        .from('product_colors')
-        .delete()
-        .eq('product_id', id)
-
-      // Remover produto
-      const { error: deleteError } = await supabase
-        .from('products')
-        .delete()
-        .eq('id', id)
-
-      if (deleteError) throw deleteError
+      await executeSupabaseOperation(
+        () => getSupabase().from('products').delete().eq('id', id),
+        null
+      )
 
       await loadData()
       onStatsUpdate?.()
@@ -198,12 +132,12 @@ export default function ProductManager({ onStatsUpdate }: ProductManagerProps) {
     setFormData({
       name: product.name,
       description: product.description,
-      price: product.price.toString(),
-      stock: product.stock.toString(),
-      brand_id: product.brand_id,
-      category_id: product.category_id
+      image_url: product.image_url,
+      brand: product.brand,
+      category: product.category
     })
-    setColors(product.colors?.map(c => ({ color_name: c.color_name, image_url: c.image_url })) || [])
+    setColors(product.colors || [])
+    setColorImages(product.color_images || {})
     setDialogOpen(true)
   }
 
@@ -212,27 +146,50 @@ export default function ProductManager({ onStatsUpdate }: ProductManagerProps) {
     setFormData({
       name: '',
       description: '',
-      price: '',
-      stock: '',
-      brand_id: '',
-      category_id: ''
+      image_url: '',
+      brand: '',
+      category: ''
     })
     setColors([])
+    setColorImages({})
     setError('')
   }
 
   const addColor = () => {
-    setColors([...colors, { color_name: '', image_url: '' }])
+    const newColor = `Cor ${colors.length + 1}`
+    setColors([...colors, newColor])
   }
 
-  const updateColor = (index: number, field: 'color_name' | 'image_url', value: string) => {
+  const updateColor = (index: number, value: string) => {
     const newColors = [...colors]
-    newColors[index][field] = value
+    const oldColor = newColors[index]
+    newColors[index] = value
     setColors(newColors)
+
+    // Atualizar color_images se necessário
+    if (oldColor !== value && colorImages[oldColor]) {
+      const newColorImages = { ...colorImages }
+      newColorImages[value] = newColorImages[oldColor]
+      delete newColorImages[oldColor]
+      setColorImages(newColorImages)
+    }
+  }
+
+  const updateColorImage = (color: string, imageUrl: string) => {
+    setColorImages(prev => ({
+      ...prev,
+      [color]: imageUrl
+    }))
   }
 
   const removeColor = (index: number) => {
+    const colorToRemove = colors[index]
     setColors(colors.filter((_, i) => i !== index))
+    
+    // Remover imagem da cor também
+    const newColorImages = { ...colorImages }
+    delete newColorImages[colorToRemove]
+    setColorImages(newColorImages)
   }
 
   if (!isSupabaseConfigured()) {
@@ -298,32 +255,16 @@ export default function ProductManager({ onStatsUpdate }: ProductManagerProps) {
                     </Alert>
                   )}
                   
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="name" className="text-gray-300">Nome</Label>
-                      <Input
-                        id="name"
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        placeholder="Nome do produto"
-                        required
-                        className="bg-black/20 border-red-500/30 text-white placeholder-gray-400"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="price" className="text-gray-300">Preço</Label>
-                      <Input
-                        id="price"
-                        type="number"
-                        step="0.01"
-                        value={formData.price}
-                        onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                        placeholder="0.00"
-                        required
-                        className="bg-black/20 border-red-500/30 text-white placeholder-gray-400"
-                      />
-                    </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="name" className="text-gray-300">Nome</Label>
+                    <Input
+                      id="name"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      placeholder="Nome do produto"
+                      required
+                      className="bg-black/20 border-red-500/30 text-white placeholder-gray-400"
+                    />
                   </div>
 
                   <div className="space-y-2">
@@ -337,30 +278,28 @@ export default function ProductManager({ onStatsUpdate }: ProductManagerProps) {
                     />
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="stock" className="text-gray-300">Estoque</Label>
-                      <Input
-                        id="stock"
-                        type="number"
-                        value={formData.stock}
-                        onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-                        placeholder="0"
-                        required
-                        className="bg-black/20 border-red-500/30 text-white placeholder-gray-400"
-                      />
-                    </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="image_url" className="text-gray-300">URL da Imagem Principal</Label>
+                    <Input
+                      id="image_url"
+                      value={formData.image_url}
+                      onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
+                      placeholder="https://exemplo.com/imagem.jpg"
+                      className="bg-black/20 border-red-500/30 text-white placeholder-gray-400"
+                    />
+                  </div>
 
+                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="brand" className="text-gray-300">Marca</Label>
-                      <Select value={formData.brand_id} onValueChange={(value) => setFormData({ ...formData, brand_id: value })}>
+                      <Select value={formData.brand} onValueChange={(value) => setFormData({ ...formData, brand: value })}>
                         <SelectTrigger className="bg-black/20 border-red-500/30 text-white">
                           <SelectValue placeholder="Selecione uma marca" />
                         </SelectTrigger>
                         <SelectContent className="bg-black border-red-500/30">
-                          {brands.map((brand) => (
-                            <SelectItem key={brand.id} value={brand.id} className="text-white hover:bg-red-500/20">
-                              {brand.name}
+                          {defaultBrands.map((brand) => (
+                            <SelectItem key={brand} value={brand} className="text-white hover:bg-red-500/20">
+                              {brand}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -369,14 +308,14 @@ export default function ProductManager({ onStatsUpdate }: ProductManagerProps) {
 
                     <div className="space-y-2">
                       <Label htmlFor="category" className="text-gray-300">Categoria</Label>
-                      <Select value={formData.category_id} onValueChange={(value) => setFormData({ ...formData, category_id: value })}>
+                      <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
                         <SelectTrigger className="bg-black/20 border-red-500/30 text-white">
                           <SelectValue placeholder="Selecione uma categoria" />
                         </SelectTrigger>
                         <SelectContent className="bg-black border-red-500/30">
-                          {categories.map((category) => (
-                            <SelectItem key={category.id} value={category.id} className="text-white hover:bg-red-500/20">
-                              {category.name}
+                          {defaultCategories.map((category) => (
+                            <SelectItem key={category} value={category} className="text-white hover:bg-red-500/20">
+                              {category.charAt(0).toUpperCase() + category.slice(1)}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -401,16 +340,16 @@ export default function ProductManager({ onStatsUpdate }: ProductManagerProps) {
                     {colors.map((color, index) => (
                       <div key={index} className="grid grid-cols-2 gap-2 p-3 bg-black/20 rounded-lg border border-red-500/20">
                         <Input
-                          value={color.color_name}
-                          onChange={(e) => updateColor(index, 'color_name', e.target.value)}
+                          value={color}
+                          onChange={(e) => updateColor(index, e.target.value)}
                           placeholder="Nome da cor"
                           className="bg-black/20 border-red-500/30 text-white placeholder-gray-400"
                         />
                         <div className="flex space-x-2">
                           <Input
-                            value={color.image_url}
-                            onChange={(e) => updateColor(index, 'image_url', e.target.value)}
-                            placeholder="URL da imagem"
+                            value={colorImages[color] || ''}
+                            onChange={(e) => updateColorImage(color, e.target.value)}
+                            placeholder="URL da imagem desta cor"
                             className="bg-black/20 border-red-500/30 text-white placeholder-gray-400"
                           />
                           <Button
@@ -475,17 +414,11 @@ export default function ProductManager({ onStatsUpdate }: ProductManagerProps) {
                         <h3 className="text-white font-semibold">{product.name}</h3>
                         <p className="text-gray-400 text-sm">{product.description}</p>
                         <div className="flex items-center space-x-4 mt-2">
-                          <span className="text-green-400 font-semibold">
-                            R$ {product.price.toFixed(2)}
-                          </span>
-                          <span className="text-gray-400 text-sm">
-                            Estoque: {product.stock}
-                          </span>
                           <Badge variant="outline" className="border-blue-500/50 text-blue-300">
-                            {product.brand?.name}
+                            {product.brand}
                           </Badge>
                           <Badge variant="outline" className="border-purple-500/50 text-purple-300">
-                            {product.category?.name}
+                            {product.category}
                           </Badge>
                         </div>
                         {product.colors && product.colors.length > 0 && (
@@ -493,7 +426,7 @@ export default function ProductManager({ onStatsUpdate }: ProductManagerProps) {
                             <span className="text-gray-400 text-sm">Cores:</span>
                             {product.colors.map((color, index) => (
                               <Badge key={index} variant="outline" className="border-orange-500/50 text-orange-300">
-                                {color.color_name}
+                                {color}
                               </Badge>
                             ))}
                           </div>
