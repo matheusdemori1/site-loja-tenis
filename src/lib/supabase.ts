@@ -1,9 +1,46 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.warn('Supabase environment variables are not configured')
+}
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 10,
+    },
+  },
+})
+
+// Função helper para operações do Supabase com tratamento de erro
+export async function executeSupabaseOperation<T>(
+  operation: () => Promise<{ data: T | null; error: any }>
+): Promise<{ data: T | null; error: any }> {
+  try {
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return {
+        data: null,
+        error: { message: 'Supabase não configurado. Configure as variáveis de ambiente.' }
+      }
+    }
+    
+    const result = await operation()
+    return result
+  } catch (error) {
+    console.error('Erro na operação Supabase:', error)
+    return {
+      data: null,
+      error: { message: 'Erro de conexão com o banco de dados' }
+    }
+  }
+}
 
 // Tipos para o banco de dados
 export interface Product {

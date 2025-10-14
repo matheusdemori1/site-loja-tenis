@@ -540,6 +540,10 @@ export default function AdminDashboard() {
                     src={item.image_url || item.image}
                     alt={item.name || item.title}
                     className="w-full h-32 object-cover rounded-lg mb-3"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.src = 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=300&fit=crop';
+                    }}
                   />
                 )}
                 <h3 className="font-semibold text-white mb-2">
