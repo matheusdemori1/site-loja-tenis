@@ -19,7 +19,8 @@ import {
   Image as ImageIcon,
   AlertCircle,
   Database,
-  BarChart3
+  BarChart3,
+  CheckCircle
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { supabase, type Product, type Category, type Brand, type HeroSlide } from '@/lib/supabase'
@@ -41,6 +42,8 @@ export default function AdminDashboard() {
   const [editingItem, setEditingItem] = useState<any>(null)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [tablesExist, setTablesExist] = useState(false)
+  const [checkingTables, setCheckingTables] = useState(true)
   
   const router = useRouter()
 
@@ -63,7 +66,7 @@ export default function AdminDashboard() {
         }
 
         setUser(session.user)
-        await loadAllData()
+        await checkTablesAndLoadData()
         setLoading(false)
       } catch (error) {
         console.error('Erro ao verificar autenticação:', error)
@@ -74,6 +77,51 @@ export default function AdminDashboard() {
 
     checkAuth()
   }, [mounted, router])
+
+  const checkTablesAndLoadData = async () => {
+    try {
+      setCheckingTables(true)
+      
+      // Tentar uma consulta simples para verificar se as tabelas existem
+      const { data: productsData, error: productsError } = await supabase
+        .from('products')
+        .select('count', { count: 'exact', head: true })
+
+      const { data: categoriesData, error: categoriesError } = await supabase
+        .from('categories')
+        .select('count', { count: 'exact', head: true })
+
+      const { data: brandsData, error: brandsError } = await supabase
+        .from('brands')
+        .select('count', { count: 'exact', head: true })
+
+      const { data: slidesData, error: slidesError } = await supabase
+        .from('hero_slides')
+        .select('count', { count: 'exact', head: true })
+
+      // Se alguma tabela não existe, mostrar aviso
+      if (productsError || categoriesError || brandsError || slidesError) {
+        console.warn('Algumas tabelas não existem ainda:', {
+          products: productsError?.message,
+          categories: categoriesError?.message,
+          brands: brandsError?.message,
+          slides: slidesError?.message
+        })
+        setTablesExist(false)
+        setCheckingTables(false)
+        return
+      }
+
+      // Se chegou aqui, as tabelas existem
+      setTablesExist(true)
+      await loadAllData()
+      setCheckingTables(false)
+    } catch (error) {
+      console.error('Erro ao verificar tabelas:', error)
+      setTablesExist(false)
+      setCheckingTables(false)
+    }
+  }
 
   const loadAllData = async () => {
     try {
@@ -373,6 +421,135 @@ export default function AdminDashboard() {
             </Button>
           </CardContent>
         </Card>
+      </div>
+    )
+  }
+
+  // Se as tabelas não existem, mostrar instruções
+  if (!tablesExist && !checkingTables) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-black via-red-900 to-orange-900">
+        {/* Header */}
+        <header className="bg-black/40 backdrop-blur-md border-b border-red-500/20">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between h-16">
+              <div className="flex items-center gap-4">
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-red-500 to-orange-500 bg-clip-text text-transparent">
+                  NOVITA Admin
+                </h1>
+                <span className="text-gray-400">|</span>
+                <span className="text-gray-300">Configuração Inicial</span>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="text-sm text-gray-300">
+                  Olá, <span className="text-red-400">{user?.email}</span>
+                </div>
+                <Button
+                  onClick={handleLogout}
+                  variant="outline"
+                  className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Sair
+                </Button>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <Card className="bg-black/30 backdrop-blur-sm border-red-500/20">
+            <CardHeader>
+              <CardTitle className="text-2xl text-white flex items-center gap-3">
+                <Database className="w-8 h-8 text-red-400" />
+                Configuração do Banco de Dados
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6 space-y-6">
+              <Alert className="border-orange-500/50 bg-orange-500/10">
+                <AlertCircle className="h-4 w-4 text-orange-400" />
+                <AlertDescription className="text-orange-300">
+                  <strong>Ação Necessária:</strong> As tabelas do banco de dados ainda não foram criadas. 
+                  Siga as instruções abaixo para configurar o sistema.
+                </AlertDescription>
+              </Alert>
+
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-white">📋 Passos para Configuração:</h3>
+                
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3 p-4 bg-black/20 rounded-lg border border-red-500/20">
+                    <div className="bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold">1</div>
+                    <div>
+                      <p className="text-white font-medium">Acesse seu Dashboard do Supabase</p>
+                      <p className="text-gray-300 text-sm">Vá para o painel administrativo do seu projeto Supabase</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 p-4 bg-black/20 rounded-lg border border-red-500/20">
+                    <div className="bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold">2</div>
+                    <div>
+                      <p className="text-white font-medium">Abra o SQL Editor</p>
+                      <p className="text-gray-300 text-sm">Navegue até "SQL Editor" no menu lateral</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 p-4 bg-black/20 rounded-lg border border-red-500/20">
+                    <div className="bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold">3</div>
+                    <div>
+                      <p className="text-white font-medium">Execute os comandos SQL</p>
+                      <p className="text-gray-300 text-sm">Copie e execute os comandos do arquivo SUPABASE_SETUP.md</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 p-4 bg-black/20 rounded-lg border border-red-500/20">
+                    <div className="bg-green-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold">4</div>
+                    <div>
+                      <p className="text-white font-medium">Recarregue esta página</p>
+                      <p className="text-gray-300 text-sm">Após executar os comandos, atualize o painel admin</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <Button
+                  onClick={() => window.location.reload()}
+                  className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+                >
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Verificar Novamente
+                </Button>
+                <Button
+                  onClick={() => router.push('/')}
+                  variant="outline"
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                >
+                  Voltar ao Site
+                </Button>
+              </div>
+
+              <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                <p className="text-blue-300 text-sm">
+                  💡 <strong>Dica:</strong> Todos os comandos SQL necessários estão no arquivo 
+                  <code className="bg-black/30 px-2 py-1 rounded mx-1">SUPABASE_SETUP.md</code> 
+                  na raiz do projeto.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
+  if (checkingTables) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-black via-red-900 to-orange-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-red-500 mx-auto mb-4"></div>
+          <p className="text-white text-xl">Verificando configuração do banco...</p>
+        </div>
       </div>
     )
   }
