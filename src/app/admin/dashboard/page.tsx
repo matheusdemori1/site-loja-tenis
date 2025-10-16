@@ -20,10 +20,14 @@ import {
   AlertCircle,
   Database,
   BarChart3,
-  CheckCircle
+  CheckCircle,
+  RefreshCw,
+  ExternalLink,
+  Shield,
+  ShieldAlert
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { supabase, type Product, type Category, type Brand, type HeroSlide } from '@/lib/supabase'
+import { supabase, checkTablesExist, executeSupabaseOperation, type Product, type Category, type Brand, type HeroSlide } from '@/lib/supabase'
 
 export default function AdminDashboard() {
   const [user, setUser] = useState<any>(null)
@@ -44,6 +48,7 @@ export default function AdminDashboard() {
   const [success, setSuccess] = useState('')
   const [tablesExist, setTablesExist] = useState(false)
   const [checkingTables, setCheckingTables] = useState(true)
+  const [tableStatus, setTableStatus] = useState<any>({})
   
   const router = useRouter()
 
@@ -81,43 +86,24 @@ export default function AdminDashboard() {
   const checkTablesAndLoadData = async () => {
     try {
       setCheckingTables(true)
+      setError('')
       
-      // Tentar uma consulta simples para verificar se as tabelas existem
-      const { data: productsData, error: productsError } = await supabase
-        .from('products')
-        .select('count', { count: 'exact', head: true })
+      console.log('🔍 Verificando tabelas do banco de dados...')
+      const status = await checkTablesExist()
+      setTableStatus(status)
+      setTablesExist(status.allExist)
 
-      const { data: categoriesData, error: categoriesError } = await supabase
-        .from('categories')
-        .select('count', { count: 'exact', head: true })
-
-      const { data: brandsData, error: brandsError } = await supabase
-        .from('brands')
-        .select('count', { count: 'exact', head: true })
-
-      const { data: slidesData, error: slidesError } = await supabase
-        .from('hero_slides')
-        .select('count', { count: 'exact', head: true })
-
-      // Se alguma tabela não existe, mostrar aviso
-      if (productsError || categoriesError || brandsError || slidesError) {
-        console.warn('Algumas tabelas não existem ainda:', {
-          products: productsError?.message,
-          categories: categoriesError?.message,
-          brands: brandsError?.message,
-          slides: slidesError?.message
-        })
-        setTablesExist(false)
-        setCheckingTables(false)
-        return
+      if (status.allExist) {
+        console.log('✅ Todas as tabelas existem, carregando dados...')
+        await loadAllData()
+      } else {
+        console.warn('⚠️ Algumas tabelas não existem:', status)
       }
-
-      // Se chegou aqui, as tabelas existem
-      setTablesExist(true)
-      await loadAllData()
+      
       setCheckingTables(false)
     } catch (error) {
-      console.error('Erro ao verificar tabelas:', error)
+      console.error('❌ Erro ao verificar tabelas:', error)
+      setError('Erro ao verificar configuração do banco de dados')
       setTablesExist(false)
       setCheckingTables(false)
     }
@@ -125,61 +111,83 @@ export default function AdminDashboard() {
 
   const loadAllData = async () => {
     try {
-      // Carregar produtos
-      const { data: productsData, error: productsError } = await supabase
-        .from('products')
-        .select('*')
-        .order('created_at', { ascending: false })
+      console.log('🔄 Carregando dados do banco...')
 
-      if (productsError) {
-        console.warn('Erro ao carregar produtos:', productsError)
-        setProducts([])
-      } else {
-        setProducts(productsData || [])
+      // Carregar produtos
+      if (tableStatus.products) {
+        const result = await executeSupabaseOperation(async () => {
+          return await supabase
+            .from('products')
+            .select('*')
+            .order('created_at', { ascending: false })
+        })
+
+        if (result.error) {
+          console.warn('⚠️ Erro ao carregar produtos:', result.error.message)
+          setProducts([])
+        } else {
+          setProducts(result.data || [])
+          console.log(`✅ ${result.data?.length || 0} produtos carregados`)
+        }
       }
 
       // Carregar categorias
-      const { data: categoriesData, error: categoriesError } = await supabase
-        .from('categories')
-        .select('*')
-        .order('name')
+      if (tableStatus.categories) {
+        const result = await executeSupabaseOperation(async () => {
+          return await supabase
+            .from('categories')
+            .select('*')
+            .order('name')
+        })
 
-      if (categoriesError) {
-        console.warn('Erro ao carregar categorias:', categoriesError)
-        setCategories([])
-      } else {
-        setCategories(categoriesData || [])
+        if (result.error) {
+          console.warn('⚠️ Erro ao carregar categorias:', result.error.message)
+          setCategories([])
+        } else {
+          setCategories(result.data || [])
+          console.log(`✅ ${result.data?.length || 0} categorias carregadas`)
+        }
       }
 
       // Carregar marcas
-      const { data: brandsData, error: brandsError } = await supabase
-        .from('brands')
-        .select('*')
-        .order('name')
+      if (tableStatus.brands) {
+        const result = await executeSupabaseOperation(async () => {
+          return await supabase
+            .from('brands')
+            .select('*')
+            .order('name')
+        })
 
-      if (brandsError) {
-        console.warn('Erro ao carregar marcas:', brandsError)
-        setBrands([])
-      } else {
-        setBrands(brandsData || [])
+        if (result.error) {
+          console.warn('⚠️ Erro ao carregar marcas:', result.error.message)
+          setBrands([])
+        } else {
+          setBrands(result.data || [])
+          console.log(`✅ ${result.data?.length || 0} marcas carregadas`)
+        }
       }
 
       // Carregar slides
-      const { data: slidesData, error: slidesError } = await supabase
-        .from('hero_slides')
-        .select('*')
-        .order('order_index')
+      if (tableStatus.hero_slides) {
+        const result = await executeSupabaseOperation(async () => {
+          return await supabase
+            .from('hero_slides')
+            .select('*')
+            .order('order_index')
+        })
 
-      if (slidesError) {
-        console.warn('Erro ao carregar slides:', slidesError)
-        setHeroSlides([])
-      } else {
-        setHeroSlides(slidesData || [])
+        if (result.error) {
+          console.warn('⚠️ Erro ao carregar slides:', result.error.message)
+          setHeroSlides([])
+        } else {
+          setHeroSlides(result.data || [])
+          console.log(`✅ ${result.data?.length || 0} slides carregados`)
+        }
       }
 
-      console.log('✅ Todos os dados carregados com sucesso')
+      console.log('✅ Carregamento de dados concluído')
     } catch (error) {
-      console.error('Erro ao carregar dados:', error)
+      console.error('❌ Erro geral ao carregar dados:', error)
       setError('Erro ao carregar dados do banco')
     }
   }
@@ -208,20 +216,30 @@ export default function AdminDashboard() {
 
         if (editingItem?.id) {
           // Atualizar produto existente
-          const { error } = await supabase
-            .from('products')
-            .update({
-              name: item.name,
-              description: item.description,
-              image_url: item.image_url,
-              brand: item.brand,
-              category: item.category,
-              colors: item.colors || [],
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', editingItem.id)
+          const updateData: any = {
+            name: item.name,
+            description: item.description,
+            image_url: item.image_url,
+            brand: item.brand,
+            category: item.category,
+            colors: item.colors || []
+          }
 
-          if (error) throw error
+          const result = await executeSupabaseOperation(async () => {
+            return await supabase
+              .from('products')
+              .update(updateData)
+              .eq('id', editingItem.id)
+              .select()
+          })
+
+          if (result.error) {
+            // Verificar se é erro de RLS
+            if (result.error.code === '42501') {
+              throw new Error('Erro de permissão: Execute os comandos SQL do arquivo SUPABASE_SETUP.md para corrigir as políticas de segurança (RLS)')
+            }
+            throw new Error(result.error.message)
+          }
           
           setProducts(prev => prev.map(p => 
             p.id === editingItem.id 
@@ -230,101 +248,158 @@ export default function AdminDashboard() {
           ))
         } else {
           // Criar novo produto
-          const { data, error } = await supabase
-            .from('products')
-            .insert([{
-              name: item.name,
-              description: item.description,
-              image_url: item.image_url,
-              brand: item.brand,
-              category: item.category,
-              colors: item.colors || []
-            }])
-            .select()
+          const result = await executeSupabaseOperation(async () => {
+            return await supabase
+              .from('products')
+              .insert([{
+                name: item.name,
+                description: item.description,
+                image_url: item.image_url,
+                brand: item.brand,
+                category: item.category,
+                colors: item.colors || []
+              }])
+              .select()
+          })
 
-          if (error) throw error
-          if (data) setProducts(prev => [data[0], ...prev])
+          if (result.error) {
+            // Verificar se é erro de RLS
+            if (result.error.code === '42501') {
+              throw new Error('Erro de permissão: Execute os comandos SQL do arquivo SUPABASE_SETUP.md para corrigir as políticas de segurança (RLS)')
+            }
+            throw new Error(result.error.message)
+          }
+          
+          if (result.data) setProducts(prev => [result.data[0], ...prev])
         }
       } else if (activeTab === 'categories') {
         const slug = item.slug || item.name.toLowerCase().replace(/\s+/g, '-')
         
         if (editingItem?.id) {
-          const { error } = await supabase
-            .from('categories')
-            .update({ name: item.name, slug })
-            .eq('id', editingItem.id)
+          const result = await executeSupabaseOperation(async () => {
+            return await supabase
+              .from('categories')
+              .update({ name: item.name, slug })
+              .eq('id', editingItem.id)
+              .select()
+          })
 
-          if (error) throw error
+          if (result.error) {
+            if (result.error.code === '42501') {
+              throw new Error('Erro de permissão: Execute os comandos SQL do arquivo SUPABASE_SETUP.md para corrigir as políticas de segurança (RLS)')
+            }
+            throw new Error(result.error.message)
+          }
           
           setCategories(prev => prev.map(c => 
             c.id === editingItem.id ? { ...c, name: item.name, slug } : c
           ))
         } else {
-          const { data, error } = await supabase
-            .from('categories')
-            .insert([{ name: item.name, slug }])
-            .select()
+          const result = await executeSupabaseOperation(async () => {
+            return await supabase
+              .from('categories')
+              .insert([{ name: item.name, slug }])
+              .select()
+          })
 
-          if (error) throw error
-          if (data) setCategories(prev => [...prev, data[0]])
+          if (result.error) {
+            if (result.error.code === '42501') {
+              throw new Error('Erro de permissão: Execute os comandos SQL do arquivo SUPABASE_SETUP.md para corrigir as políticas de segurança (RLS)')
+            }
+            throw new Error(result.error.message)
+          }
+          
+          if (result.data) setCategories(prev => [...prev, result.data[0]])
         }
       } else if (activeTab === 'brands') {
         const slug = item.slug || item.name.toLowerCase().replace(/\s+/g, '-')
         
         if (editingItem?.id) {
-          const { error } = await supabase
-            .from('brands')
-            .update({ name: item.name, slug })
-            .eq('id', editingItem.id)
+          const result = await executeSupabaseOperation(async () => {
+            return await supabase
+              .from('brands')
+              .update({ name: item.name, slug })
+              .eq('id', editingItem.id)
+              .select()
+          })
 
-          if (error) throw error
+          if (result.error) {
+            if (result.error.code === '42501') {
+              throw new Error('Erro de permissão: Execute os comandos SQL do arquivo SUPABASE_SETUP.md para corrigir as políticas de segurança (RLS)')
+            }
+            throw new Error(result.error.message)
+          }
           
           setBrands(prev => prev.map(b => 
             b.id === editingItem.id ? { ...b, name: item.name, slug } : b
           ))
         } else {
-          const { data, error } = await supabase
-            .from('brands')
-            .insert([{ name: item.name, slug }])
-            .select()
+          const result = await executeSupabaseOperation(async () => {
+            return await supabase
+              .from('brands')
+              .insert([{ name: item.name, slug }])
+              .select()
+          })
 
-          if (error) throw error
-          if (data) setBrands(prev => [...prev, data[0]])
+          if (result.error) {
+            if (result.error.code === '42501') {
+              throw new Error('Erro de permissão: Execute os comandos SQL do arquivo SUPABASE_SETUP.md para corrigir as políticas de segurança (RLS)')
+            }
+            throw new Error(result.error.message)
+          }
+          
+          if (result.data) setBrands(prev => [...prev, result.data[0]])
         }
       } else if (activeTab === 'slides') {
         if (editingItem?.id) {
-          const { error } = await supabase
-            .from('hero_slides')
-            .update({
-              title: item.title,
-              subtitle: item.subtitle,
-              description: item.description,
-              image: item.image,
-              order_index: item.order_index || 1,
-              is_active: item.is_active !== false
-            })
-            .eq('id', editingItem.id)
+          const result = await executeSupabaseOperation(async () => {
+            return await supabase
+              .from('hero_slides')
+              .update({
+                title: item.title,
+                subtitle: item.subtitle,
+                description: item.description,
+                image: item.image,
+                order_index: item.order_index || 1,
+                is_active: item.is_active !== false
+              })
+              .eq('id', editingItem.id)
+              .select()
+          })
 
-          if (error) throw error
+          if (result.error) {
+            if (result.error.code === '42501') {
+              throw new Error('Erro de permissão: Execute os comandos SQL do arquivo SUPABASE_SETUP.md para corrigir as políticas de segurança (RLS)')
+            }
+            throw new Error(result.error.message)
+          }
           
           setHeroSlides(prev => prev.map(s => 
             s.id === editingItem.id ? { ...s, ...item } : s
           ))
         } else {
-          const { data, error } = await supabase
-            .from('hero_slides')
-            .insert([{
-              title: item.title,
-              subtitle: item.subtitle,
-              description: item.description,
-              image: item.image,
-              order_index: item.order_index || 1,
-              is_active: item.is_active !== false
-            }])
-            .select()
+          const result = await executeSupabaseOperation(async () => {
+            return await supabase
+              .from('hero_slides')
+              .insert([{
+                title: item.title,
+                subtitle: item.subtitle,
+                description: item.description,
+                image: item.image,
+                order_index: item.order_index || 1,
+                is_active: item.is_active !== false
+              }])
+              .select()
+          })
 
-          if (error) throw error
-          if (data) setHeroSlides(prev => [...prev, data[0]])
+          if (result.error) {
+            if (result.error.code === '42501') {
+              throw new Error('Erro de permissão: Execute os comandos SQL do arquivo SUPABASE_SETUP.md para corrigir as políticas de segurança (RLS)')
+            }
+            throw new Error(result.error.message)
+          }
+          
+          if (result.data) setHeroSlides(prev => [...prev, result.data[0]])
         }
       }
 
@@ -334,8 +409,8 @@ export default function AdminDashboard() {
       
       console.log('✅ Item salvo com sucesso no Supabase')
     } catch (error: any) {
-      console.error('Erro ao salvar item:', error)
-      setError('Erro ao salvar item: ' + error.message)
+      console.error('❌ Erro ao salvar item:', error)
+      setError(error.message || 'Erro ao salvar item')
     }
   }
 
@@ -347,44 +422,76 @@ export default function AdminDashboard() {
       setSuccess('')
 
       if (activeTab === 'products') {
-        const { error } = await supabase
-          .from('products')
-          .delete()
-          .eq('id', id)
+        const result = await executeSupabaseOperation(async () => {
+          return await supabase
+            .from('products')
+            .delete()
+            .eq('id', id)
+        })
 
-        if (error) throw error
+        if (result.error) {
+          if (result.error.code === '42501') {
+            throw new Error('Erro de permissão: Execute os comandos SQL do arquivo SUPABASE_SETUP.md para corrigir as políticas de segurança (RLS)')
+          }
+          throw new Error(result.error.message)
+        }
+        
         setProducts(prev => prev.filter(p => p.id !== id))
       } else if (activeTab === 'categories') {
-        const { error } = await supabase
-          .from('categories')
-          .delete()
-          .eq('id', id)
+        const result = await executeSupabaseOperation(async () => {
+          return await supabase
+            .from('categories')
+            .delete()
+            .eq('id', id)
+        })
 
-        if (error) throw error
+        if (result.error) {
+          if (result.error.code === '42501') {
+            throw new Error('Erro de permissão: Execute os comandos SQL do arquivo SUPABASE_SETUP.md para corrigir as políticas de segurança (RLS)')
+          }
+          throw new Error(result.error.message)
+        }
+        
         setCategories(prev => prev.filter(c => c.id !== id))
       } else if (activeTab === 'brands') {
-        const { error } = await supabase
-          .from('brands')
-          .delete()
-          .eq('id', id)
+        const result = await executeSupabaseOperation(async () => {
+          return await supabase
+            .from('brands')
+            .delete()
+            .eq('id', id)
+        })
 
-        if (error) throw error
+        if (result.error) {
+          if (result.error.code === '42501') {
+            throw new Error('Erro de permissão: Execute os comandos SQL do arquivo SUPABASE_SETUP.md para corrigir as políticas de segurança (RLS)')
+          }
+          throw new Error(result.error.message)
+        }
+        
         setBrands(prev => prev.filter(b => b.id !== id))
       } else if (activeTab === 'slides') {
-        const { error } = await supabase
-          .from('hero_slides')
-          .delete()
-          .eq('id', id)
+        const result = await executeSupabaseOperation(async () => {
+          return await supabase
+            .from('hero_slides')
+            .delete()
+            .eq('id', id)
+        })
 
-        if (error) throw error
+        if (result.error) {
+          if (result.error.code === '42501') {
+            throw new Error('Erro de permissão: Execute os comandos SQL do arquivo SUPABASE_SETUP.md para corrigir as políticas de segurança (RLS)')
+          }
+          throw new Error(result.error.message)
+        }
+        
         setHeroSlides(prev => prev.filter(s => s.id !== id))
       }
 
       setSuccess('Item excluído com sucesso!')
       console.log('✅ Item excluído com sucesso do Supabase')
     } catch (error: any) {
-      console.error('Erro ao excluir item:', error)
-      setError('Erro ao excluir item: ' + error.message)
+      console.error('❌ Erro ao excluir item:', error)
+      setError(error.message || 'Erro ao excluir item')
     }
   }
 
@@ -427,6 +534,10 @@ export default function AdminDashboard() {
 
   // Se as tabelas não existem, mostrar instruções
   if (!tablesExist && !checkingTables) {
+    const missingTables = Object.entries(tableStatus)
+      .filter(([key, exists]) => key !== 'allExist' && !exists)
+      .map(([key]) => key)
+
     return (
       <div className="min-h-screen bg-gradient-to-br from-black via-red-900 to-orange-900">
         {/* Header */}
@@ -470,7 +581,30 @@ export default function AdminDashboard() {
                 <AlertCircle className="h-4 w-4 text-orange-400" />
                 <AlertDescription className="text-orange-300">
                   <strong>Ação Necessária:</strong> As tabelas do banco de dados ainda não foram criadas. 
-                  Siga as instruções abaixo para configurar o sistema.
+                  Execute os comandos SQL no seu Dashboard do Supabase.
+                </AlertDescription>
+              </Alert>
+
+              {missingTables.length > 0 && (
+                <Alert className="border-red-500/50 bg-red-500/10">
+                  <AlertCircle className="h-4 w-4 text-red-400" />
+                  <AlertDescription className="text-red-300">
+                    <strong>Tabelas não encontradas:</strong>
+                    <ul className="list-disc list-inside mt-2">
+                      {missingTables.map((table) => (
+                        <li key={table}>{table}</li>
+                      ))}
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <Alert className="border-red-500/50 bg-red-500/10">
+                <ShieldAlert className="h-4 w-4 text-red-400" />
+                <AlertDescription className="text-red-300">
+                  <strong>⚠️ IMPORTANTE - Erros de RLS (Row Level Security):</strong><br />
+                  Se você está vendo erros como "row violates row-level security policy", 
+                  execute OBRIGATORIAMENTE os comandos de correção de RLS no arquivo SUPABASE_SETUP.md.
                 </AlertDescription>
               </Alert>
 
@@ -480,9 +614,17 @@ export default function AdminDashboard() {
                 <div className="space-y-3">
                   <div className="flex items-start gap-3 p-4 bg-black/20 rounded-lg border border-red-500/20">
                     <div className="bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold">1</div>
-                    <div>
+                    <div className="flex-1">
                       <p className="text-white font-medium">Acesse seu Dashboard do Supabase</p>
-                      <p className="text-gray-300 text-sm">Vá para o painel administrativo do seu projeto Supabase</p>
+                      <p className="text-gray-300 text-sm mb-2">Vá para o painel administrativo do seu projeto Supabase</p>
+                      <Button
+                        onClick={() => window.open('https://supabase.com/dashboard', '_blank')}
+                        size="sm"
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        <ExternalLink className="w-4 h-4 mr-2" />
+                        Abrir Dashboard
+                      </Button>
                     </div>
                   </div>
 
@@ -499,14 +641,17 @@ export default function AdminDashboard() {
                     <div>
                       <p className="text-white font-medium">Execute os comandos SQL</p>
                       <p className="text-gray-300 text-sm">Copie e execute os comandos do arquivo SUPABASE_SETUP.md</p>
+                      <p className="text-red-300 text-sm font-semibold mt-1">
+                        🔐 OBRIGATÓRIO: Execute os comandos de RLS para corrigir erros de permissão
+                      </p>
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-3 p-4 bg-black/20 rounded-lg border border-red-500/20">
+                  <div className="flex items-start gap-3 p-4 bg-black/20 rounded-lg border border-green-500/20">
                     <div className="bg-green-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold">4</div>
                     <div>
                       <p className="text-white font-medium">Recarregue esta página</p>
-                      <p className="text-gray-300 text-sm">Após executar os comandos, atualize o painel admin</p>
+                      <p className="text-gray-300 text-sm">Após executar os comandos, clique em "Verificar Novamente"</p>
                     </div>
                   </div>
                 </div>
@@ -514,10 +659,15 @@ export default function AdminDashboard() {
 
               <div className="flex gap-4 pt-4">
                 <Button
-                  onClick={() => window.location.reload()}
+                  onClick={checkTablesAndLoadData}
                   className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+                  disabled={checkingTables}
                 >
-                  <CheckCircle className="w-4 h-4 mr-2" />
+                  {checkingTables ? (
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                  )}
                   Verificar Novamente
                 </Button>
                 <Button
@@ -533,7 +683,14 @@ export default function AdminDashboard() {
                 <p className="text-blue-300 text-sm">
                   💡 <strong>Dica:</strong> Todos os comandos SQL necessários estão no arquivo 
                   <code className="bg-black/30 px-2 py-1 rounded mx-1">SUPABASE_SETUP.md</code> 
-                  na raiz do projeto.
+                  na raiz do projeto. Execute os comandos na ordem apresentada.
+                </p>
+              </div>
+
+              <div className="mt-4 p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+                <p className="text-red-300 text-sm">
+                  🔐 <strong>Solução para Erros de RLS:</strong> Se aparecer "row violates row-level security policy", 
+                  execute os comandos de desabilitar RLS ou criar políticas permissivas no arquivo SUPABASE_SETUP.md.
                 </p>
               </div>
             </CardContent>
