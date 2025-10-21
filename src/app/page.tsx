@@ -310,7 +310,7 @@ export default function HomePage() {
 
             {/* User Icon & Admin Button (Hidden) */}
             <div className="flex items-center gap-4">
-              {showAdminButton && (
+              {/* {showAdminButton && (
                 <button
                   onClick={handleAdminClick}
                   className="flex items-center gap-2 bg-gradient-to-r from-purple-600/80 to-blue-600/80 hover:from-purple-700 hover:to-blue-700 text-white px-3 py-2 rounded-full font-medium text-sm transition-all duration-300 transform hover:scale-105 opacity-70 hover:opacity-100"
@@ -318,8 +318,8 @@ export default function HomePage() {
                   <Settings className="w-3 h-3" />
                   Admin
                 </button>
-              )}
-              <User className="w-8 h-8 text-gray-300 hover:text-white cursor-pointer transition-colors p-1 hover:bg-white/10 rounded-full" />
+              )} */}
+              {/* <User className="w-8 h-8 text-gray-300 hover:text-white cursor-pointer transition-colors p-1 hover:bg-white/10 rounded-full" /> */}
             </div>
           </div>
         </div>
@@ -584,12 +584,14 @@ export default function HomePage() {
                 Sua loja premium de tênis esportivos. Qualidade, estilo e performance em cada produto.
               </p>
               <div className="flex space-x-4">
-                <div className="w-10 h-10 bg-gradient-to-r from-red-600 to-orange-600 rounded-full flex items-center justify-center cursor-pointer hover:scale-110 transition-transform">
-                  <span className="text-white font-bold">f</span>
-                </div>
-                <div className="w-10 h-10 bg-gradient-to-r from-red-600 to-orange-600 rounded-full flex items-center justify-center cursor-pointer hover:scale-110 transition-transform">
+                <a 
+                  href="https://www.instagram.com/novita_modas" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="w-10 h-10 bg-gradient-to-r from-red-600 to-orange-600 rounded-full flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"
+                >
                   <span className="text-white font-bold">@</span>
-                </div>
+                </a>
               </div>
             </div>
             
@@ -620,12 +622,8 @@ export default function HomePage() {
                   (18) 98110-0463
                 </li>
                 <li className="flex items-center gap-2">
-                  <span className="text-red-400">✉️</span>
-                  contato@novita.com
-                </li>
-                <li className="flex items-center gap-2">
                   <span className="text-orange-400">📍</span>
-                  São Paulo, SP
+                  PAULICEIA - SP
                 </li>
               </ul>
             </div>
