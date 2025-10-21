@@ -13,18 +13,22 @@ interface Product {
   description: string;
   colors: string[];
   color_images?: { [key: string]: string };
+  price?: number;
+  is_active?: boolean;
 }
 
 interface Category {
   id: string;
   name: string;
   slug: string;
+  description?: string;
 }
 
 interface Brand {
   id: string;
   name: string;
   slug: string;
+  description?: string;
 }
 
 interface HeroSlide {
@@ -32,7 +36,8 @@ interface HeroSlide {
   title: string;
   subtitle: string;
   description: string;
-  image: string;
+  image_url?: string;
+  image?: string;
   order_index?: number;
   is_active?: boolean;
 }
@@ -56,12 +61,12 @@ export default function HomePage() {
     setMounted(true);
   }, []);
 
-  // Categorias e marcas padrão
+  // Categorias e marcas padrão (fallback)
   const defaultCategories: Category[] = [
-    { id: '1', name: 'Running', slug: 'running' },
-    { id: '2', name: 'Casual', slug: 'casual' },
-    { id: '3', name: 'Lifestyle', slug: 'lifestyle' },
-    { id: '4', name: 'Basketball', slug: 'basketball' }
+    { id: '1', name: 'Running', slug: 'running', description: 'Tênis para corrida' },
+    { id: '2', name: 'Casual', slug: 'casual', description: 'Tênis casuais' },
+    { id: '3', name: 'Lifestyle', slug: 'lifestyle', description: 'Tênis lifestyle' },
+    { id: '4', name: 'Basketball', slug: 'basketball', description: 'Tênis de basquete' }
   ];
 
   const defaultBrands: Brand[] = [
@@ -100,46 +105,52 @@ export default function HomePage() {
     try {
       setLoading(true);
       
-      // Carregar produtos do Supabase (inicialmente vazio)
+      // Carregar produtos do Supabase
       const { data: productsData, error: productsError } = await supabase
         .from('products')
         .select('*')
+        .eq('is_active', true)
         .order('created_at', { ascending: false });
 
       if (productsError) {
-        console.warn('Produtos não encontrados, usando lista vazia:', productsError);
+        console.warn('Produtos não encontrados no banco:', productsError.message);
         setProducts([]);
       } else {
+        console.log(`✅ ${productsData?.length || 0} produtos carregados do banco`);
         setProducts(productsData || []);
       }
 
-      // Carregar categorias do Supabase ou usar padrão
+      // Carregar categorias do Supabase
       const { data: categoriesData, error: categoriesError } = await supabase
         .from('categories')
         .select('*')
         .order('name');
 
       if (categoriesError) {
-        console.warn('Categorias não encontradas, usando padrão:', categoriesError);
+        console.warn('Categorias não encontradas no banco, usando padrão:', categoriesError.message);
         setCategories(defaultCategories);
       } else {
-        setCategories(categoriesData?.length ? categoriesData : defaultCategories);
+        const dbCategories = categoriesData || [];
+        console.log(`✅ ${dbCategories.length} categorias carregadas do banco`);
+        setCategories(dbCategories.length > 0 ? dbCategories : defaultCategories);
       }
 
-      // Carregar marcas do Supabase ou usar padrão
+      // Carregar marcas do Supabase
       const { data: brandsData, error: brandsError } = await supabase
         .from('brands')
         .select('*')
         .order('name');
 
       if (brandsError) {
-        console.warn('Marcas não encontradas, usando padrão:', brandsError);
+        console.warn('Marcas não encontradas no banco, usando padrão:', brandsError.message);
         setBrands(defaultBrands);
       } else {
-        setBrands(brandsData?.length ? brandsData : defaultBrands);
+        const dbBrands = brandsData || [];
+        console.log(`✅ ${dbBrands.length} marcas carregadas do banco`);
+        setBrands(dbBrands.length > 0 ? dbBrands : defaultBrands);
       }
 
-      // Carregar slides do Supabase ou usar padrão
+      // Carregar slides do Supabase
       const { data: slidesData, error: slidesError } = await supabase
         .from('hero_slides')
         .select('*')
@@ -147,13 +158,20 @@ export default function HomePage() {
         .order('order_index');
 
       if (slidesError) {
-        console.warn('Slides não encontrados, usando padrão:', slidesError);
+        console.warn('Slides não encontrados no banco, usando padrão:', slidesError.message);
         setHeroSlides(defaultHeroSlides);
       } else {
-        setHeroSlides(slidesData?.length ? slidesData : defaultHeroSlides);
+        const dbSlides = slidesData || [];
+        console.log(`✅ ${dbSlides.length} slides carregados do banco`);
+        // Mapear image_url para image para compatibilidade
+        const mappedSlides = dbSlides.map(slide => ({
+          ...slide,
+          image: slide.image_url || slide.image
+        }));
+        setHeroSlides(mappedSlides.length > 0 ? mappedSlides : defaultHeroSlides);
       }
       
-      console.log('✅ Dados carregados com sucesso');
+      console.log('✅ Carregamento de dados concluído');
     } catch (error) {
       console.error('❌ Erro ao carregar dados:', error);
       // Garantir que sempre temos dados padrão
@@ -184,6 +202,7 @@ export default function HomePage() {
     return () => clearInterval(timer);
   }, [heroSlides.length]);
 
+  // Filtrar produtos com base nos filtros selecionados
   const filteredProducts = products.filter(product => {
     const matchesCategory = selectedCategory === 'todos' || product.category === selectedCategory;
     const matchesBrand = selectedBrand === 'todas' || product.brand.toLowerCase() === selectedBrand.toLowerCase();
@@ -196,7 +215,8 @@ export default function HomePage() {
 
   const handleWhatsApp = (product: Product, selectedColor?: string) => {
     const color = selectedColor || selectedColors[product.id] || 'A definir';
-    const message = `Olá! Tenho interesse no produto:\\n\\n📦 *${product.name}*\\n🎨 Cor: ${color}\\n🏷️ Marca: ${product.brand}\\n\\nGostaria de mais informações!`;
+    const price = product.price ? `💰 Preço: R$ ${product.price.toFixed(2).replace('.', ',')}` : '';
+    const message = `Olá! Tenho interesse no produto:\\n\\n📦 *${product.name}*\\n🎨 Cor: ${color}\\n🏷️ Marca: ${product.brand}\\n${price}\\n\\nGostaria de mais informações!`;
 
     const whatsappNumber = "5518981100463";
     const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
@@ -309,7 +329,7 @@ export default function HomePage() {
       <section className="relative h-[70vh] overflow-hidden">
         <div className="absolute inset-0">
           <img
-            src={heroSlides[currentSlide]?.image || defaultHeroSlides[0].image}
+            src={heroSlides[currentSlide]?.image || heroSlides[currentSlide]?.image_url || defaultHeroSlides[0].image}
             alt="Hero"
             className="w-full h-full object-cover transition-all duration-1000"
           />
@@ -341,33 +361,39 @@ export default function HomePage() {
         </div>
 
         {/* Navigation Arrows */}
-        <button
-          onClick={prevSlide}
-          className="absolute left-6 top-1/2 transform -translate-y-1/2 bg-black/40 hover:bg-black/60 backdrop-blur-sm text-white p-3 rounded-full transition-all duration-300 hover:scale-110"
-        >
-          <ChevronLeft className="w-6 h-6" />
-        </button>
-        <button
-          onClick={nextSlide}
-          className="absolute right-6 top-1/2 transform -translate-y-1/2 bg-black/40 hover:bg-black/60 backdrop-blur-sm text-white p-3 rounded-full transition-all duration-300 hover:scale-110"
-        >
-          <ChevronRight className="w-6 h-6" />
-        </button>
+        {heroSlides.length > 1 && (
+          <>
+            <button
+              onClick={prevSlide}
+              className="absolute left-6 top-1/2 transform -translate-y-1/2 bg-black/40 hover:bg-black/60 backdrop-blur-sm text-white p-3 rounded-full transition-all duration-300 hover:scale-110"
+            >
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+            <button
+              onClick={nextSlide}
+              className="absolute right-6 top-1/2 transform -translate-y-1/2 bg-black/40 hover:bg-black/60 backdrop-blur-sm text-white p-3 rounded-full transition-all duration-300 hover:scale-110"
+            >
+              <ChevronRight className="w-6 h-6" />
+            </button>
+          </>
+        )}
 
         {/* Slide Indicators */}
-        <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 flex space-x-3">
-          {heroSlides.map((_, index) => (
-            <button
-              key={index}
-              onClick={() => setCurrentSlide(index)}
-              className={`w-3 h-3 rounded-full transition-all duration-300 ${
-                index === currentSlide 
-                  ? 'bg-gradient-to-r from-red-500 to-orange-500 scale-125' 
-                  : 'bg-white/40 hover:bg-white/60'
-              }`}
-            />
-          ))}
-        </div>
+        {heroSlides.length > 1 && (
+          <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 flex space-x-3">
+            {heroSlides.map((_, index) => (
+              <button
+                key={index}
+                onClick={() => setCurrentSlide(index)}
+                className={`w-3 h-3 rounded-full transition-all duration-300 ${
+                  index === currentSlide 
+                    ? 'bg-gradient-to-r from-red-500 to-orange-500 scale-125' 
+                    : 'bg-white/40 hover:bg-white/60'
+                }`}
+              />
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Categories Section */}
@@ -462,6 +488,12 @@ export default function HomePage() {
                     : 'Tente ajustar os filtros ou buscar por outros termos'
                   }
                 </p>
+                {products.length === 0 && (
+                  <div className="mt-6">
+                    <p className="text-sm text-gray-400 mb-2">Para adicionar produtos de exemplo:</p>
+                    <p className="text-xs text-gray-500">Consulte o arquivo DADOS_EXEMPLO.md na raiz do projeto</p>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -491,6 +523,15 @@ export default function HomePage() {
                     <p className="text-gray-300 text-sm mb-4 line-clamp-2 leading-relaxed">
                       {product.description}
                     </p>
+
+                    {/* Price */}
+                    {product.price && (
+                      <div className="mb-4">
+                        <p className="text-2xl font-bold text-green-400">
+                          R$ {product.price.toFixed(2).replace('.', ',')}
+                        </p>
+                      </div>
+                    )}
                     
                     {/* Colors */}
                     {product.colors && product.colors.length > 0 && (
@@ -557,7 +598,15 @@ export default function HomePage() {
               <ul className="space-y-3 text-gray-300">
                 {categories.slice(0, 4).map((category) => (
                   <li key={category.id}>
-                    <a href="#" className="hover:text-red-400 transition-colors">{category.name}</a>
+                    <button 
+                      onClick={() => {
+                        setSelectedCategory(category.slug);
+                        document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' });
+                      }}
+                      className="hover:text-red-400 transition-colors text-left"
+                    >
+                      {category.name}
+                    </button>
                   </li>
                 ))}
               </ul>
