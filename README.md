@@ -1,4 +1,4 @@
- # 🏪 Novita - E-commerce de Tênis Esportivos
+# 🏪 Novita - E-commerce de Tênis Esportivos
 
 Site moderno de e-commerce especializado em tênis esportivos com painel administrativo completo.
 
